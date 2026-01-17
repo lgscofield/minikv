@@ -284,7 +284,8 @@ dependencies = [
 [[package]]
 name = "axum-server"
 version = "0.8.0"
-source = "git+https://github.com/programatik29/axum-server?branch=master#5453d8cdced1064ccc7cc0575eb34671ff357c4c"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1df331683d982a0b9492b38127151e6453639cd34926eb9c07d4cd8c6d22bfc"
 dependencies = [
  "arc-swap",
  "bytes",
