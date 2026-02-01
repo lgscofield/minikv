@@ -1,9 +1,4 @@
-//! Structured logging and request tracing middleware (v0.5.0)
-//!
-//! This module provides:
-//! - Unique request ID generation for each request
-//! - Structured logging with tracing
-//! - Request/response timing metrics
+//! Request tracing middleware with unique IDs and timing.
 
 use axum::{
     body::Body,

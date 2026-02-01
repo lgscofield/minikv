@@ -14,16 +14,17 @@ Built in public as a learning-by-doing project — now evolved into a complete, 
 
 ---
 
-## 🚦 What's New in v0.7.0
+## 🚦 What's New in v0.8.0
 
-minikv v0.7.0 brings advanced data management and query capabilities :
+minikv v0.8.0 brings enterprise-grade features for distributed deployments:
 
-- **Secondary indexes :** Search keys by value content with `GET /search?value=<substring>`
-- **Multi-key transactions :** Execute multiple operations atomically with `POST /transaction`
-- **Streaming/batch import/export :** Bulk data operations with `POST /admin/import` & `GET /admin/export`
-- **Durable S3-backed object store :** Persistent storage for S3-compatible API via pluggable backends
+- **Cross-datacenter replication:** Async replication with multiple conflict resolution strategies (LWW, Vector Clocks)
+- **Change Data Capture (CDC):** Real-time event streaming to Webhook, Kafka, or file sinks
+- **Admin Web UI:** Embedded dashboard for cluster monitoring and management
+- **Backup & Restore:** Full and incremental backups with encryption support
+- **Plugin system:** Extensible architecture for custom storage, auth, and hooks
 
-Previous highlights (v0.6.0) : enterprise security, multi-tenancy, encryption at rest, quotas, audit logging, persistent backends, watch/subscribe system.
+Previous highlights (v0.7.0): secondary indexes, multi-key transactions, batch import/export, durable S3 backend.
 
 ---
 
@@ -161,18 +162,24 @@ For cluster setup and advanced options, see the [documentation](#documentation).
 
 ## 🗺️ Roadmap
 
-### v0.7.0 (latest)
+### v0.8.0 (latest)
+- [x] Cross-datacenter replication
+- [x] Change Data Capture (CDC)
+- [x] Admin Web UI
+- [x] Backup & Restore
+- [x] Plugin system
+
+### v0.7.0
 - [x] Secondary indexes
 - [x] Multi-key transactions
 - [x] Durable S3-backed object store
 - [x] Batch import/export
 
-### Next (v0.8.0+)
-- [ ] Cross-datacenter replication
-- [ ] Change Data Capture (CDC)
-- [ ] Admin Web UI
-- [ ] Backup & Restore
-- [ ] Plugin system
+### Next (v0.9.0+)
+- [ ] Kubernetes Operator
+- [ ] GraphQL API
+- [ ] Time-series optimizations
+- [ ] Geo-partitioning
 
 ---
 

@@ -1,11 +1,4 @@
-//! Quota management module for MiniKV v0.6.0
-//!
-//! This module provides tenant-based resource quotas including:
-//! - Storage limits (bytes)
-//! - Object count limits
-//! - Request rate limiting
-//!
-//! Quotas can be configured per-tenant and are enforced at the coordinator level.
+//! Tenant-based resource quotas (storage, objects, rate limits).
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};

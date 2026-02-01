@@ -1,10 +1,4 @@
-//! Enhanced metrics collection (v0.5.0)
-//!
-//! This module provides comprehensive Prometheus-compatible metrics including:
-//! - Request latency histograms
-//! - Request counters by endpoint and status
-//! - Error rates
-//! - System metrics
+//! Prometheus-compatible metrics collection.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};

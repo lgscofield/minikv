@@ -94,7 +94,7 @@ impl Coordinator {
 
         // Start servers
 
-        tracing::info!("✓ Coordinator ready ({:?})", raft.get_role());
+        tracing::info!("Coordinator ready ({:?})", raft.get_role());
 
         tokio::select! {
             res = http_server => {

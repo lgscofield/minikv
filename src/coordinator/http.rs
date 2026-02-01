@@ -501,6 +501,34 @@ pub fn create_router(state: CoordState) -> Router {
         // Range queries and batch operations
         .route("/range", axum::routing::get(range_query))
         .route("/batch", axum::routing::post(batch_ops))
+        // v0.8.0 endpoints
+        .route("/admin/ui", axum::routing::get(admin_ui_handler))
+        .route("/admin/ui/*path", axum::routing::get(admin_ui_handler))
+        .route("/admin/backup", axum::routing::post(admin_create_backup))
+        .route("/admin/backups", axum::routing::get(admin_list_backups))
+        .route(
+            "/admin/backups/:backup_id",
+            axum::routing::get(admin_get_backup),
+        )
+        .route(
+            "/admin/backups/:backup_id",
+            axum::routing::delete(admin_delete_backup),
+        )
+        .route("/admin/restore", axum::routing::post(admin_restore))
+        .route(
+            "/admin/replication/status",
+            axum::routing::get(admin_replication_status),
+        )
+        .route("/admin/plugins", axum::routing::get(admin_list_plugins))
+        .route(
+            "/admin/plugins/:plugin_id/enable",
+            axum::routing::post(admin_enable_plugin),
+        )
+        .route(
+            "/admin/plugins/:plugin_id/disable",
+            axum::routing::post(admin_disable_plugin),
+        )
+        .route("/admin/cdc/status", axum::routing::get(admin_cdc_status))
         .with_state(state)
 }
 
@@ -1033,4 +1061,341 @@ async fn delete_key(
     // Here, we assume a delete_key(key) method on MetadataStore
     // (adapt as needed for the actual API)
     (StatusCode::OK, format!("DELETE {} succeeded", key))
+}
+
+// ============================================================================
+// v0.8.0 Endpoints - Admin Web UI, Backup/Restore, Replication, Plugins, CDC
+// ============================================================================
+
+/// Admin Web UI handler (v0.8.0)
+async fn admin_ui_handler() -> impl IntoResponse {
+    crate::common::admin_ui::admin_dashboard().await
+}
+
+/// Create a backup (v0.8.0)
+#[derive(Debug, Deserialize)]
+struct CreateBackupRequest {
+    #[serde(rename = "type", default = "default_backup_type")]
+    backup_type: String,
+}
+
+fn default_backup_type() -> String {
+    "full".to_string()
+}
+
+async fn admin_create_backup(
+    axum::Json(req): axum::Json<CreateBackupRequest>,
+) -> impl IntoResponse {
+    let backup_type = match req.backup_type.as_str() {
+        "incremental" => crate::common::backup::BackupType::Incremental,
+        _ => crate::common::backup::BackupType::Full,
+    };
+
+    let guard = crate::common::backup::BACKUP_MANAGER.read().await;
+    if let Some(ref manager) = *guard {
+        let config = crate::common::backup::BackupConfig::default();
+        match manager.start_backup(config, backup_type).await {
+            Ok(backup_id) => {
+                AUDIT_LOGGER.log_event(
+                    AuditEventType::System,
+                    "admin".to_string(),
+                    Some(backup_id.clone()),
+                    format!("Started {:?} backup", backup_type),
+                    None,
+                );
+                (
+                    StatusCode::ACCEPTED,
+                    axum::Json(json!({
+                        "status": "started",
+                        "backup_id": backup_id,
+                        "type": req.backup_type
+                    })),
+                )
+                    .into_response()
+            }
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(json!({ "error": format!("{}", e) })),
+            )
+                .into_response(),
+        }
+    } else {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            axum::Json(json!({ "error": "Backup manager not initialized" })),
+        )
+            .into_response()
+    }
+}
+
+/// List all backups (v0.8.0)
+async fn admin_list_backups() -> impl IntoResponse {
+    let guard = crate::common::backup::BACKUP_MANAGER.read().await;
+    if let Some(ref manager) = *guard {
+        let backups = manager.list_backups().await;
+        axum::Json(json!({
+            "backups": backups,
+            "total": backups.len()
+        }))
+    } else {
+        axum::Json(json!({
+            "backups": [],
+            "total": 0
+        }))
+    }
+}
+
+/// Get a specific backup (v0.8.0)
+async fn admin_get_backup(Path(backup_id): Path<String>) -> impl IntoResponse {
+    let guard = crate::common::backup::BACKUP_MANAGER.read().await;
+    if let Some(ref manager) = *guard {
+        match manager.get_backup(&backup_id).await {
+            Some(manifest) => (StatusCode::OK, axum::Json(json!(manifest))).into_response(),
+            None => (
+                StatusCode::NOT_FOUND,
+                axum::Json(json!({ "error": "Backup not found" })),
+            )
+                .into_response(),
+        }
+    } else {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            axum::Json(json!({ "error": "Backup manager not initialized" })),
+        )
+            .into_response()
+    }
+}
+
+/// Delete a backup (v0.8.0)
+async fn admin_delete_backup(Path(backup_id): Path<String>) -> impl IntoResponse {
+    let guard = crate::common::backup::BACKUP_MANAGER.read().await;
+    if let Some(ref manager) = *guard {
+        match manager.delete_backup(&backup_id).await {
+            Ok(()) => {
+                AUDIT_LOGGER.log_event(
+                    AuditEventType::System,
+                    "admin".to_string(),
+                    Some(backup_id.clone()),
+                    "Deleted backup".to_string(),
+                    None,
+                );
+                (
+                    StatusCode::OK,
+                    axum::Json(json!({ "status": "deleted", "backup_id": backup_id })),
+                )
+                    .into_response()
+            }
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(json!({ "error": format!("{}", e) })),
+            )
+                .into_response(),
+        }
+    } else {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            axum::Json(json!({ "error": "Backup manager not initialized" })),
+        )
+            .into_response()
+    }
+}
+
+/// Restore from a backup (v0.8.0)
+#[derive(Debug, Deserialize)]
+struct RestoreRequest {
+    backup_id: String,
+    target_path: Option<String>,
+}
+
+async fn admin_restore(axum::Json(req): axum::Json<RestoreRequest>) -> impl IntoResponse {
+    let guard = crate::common::backup::BACKUP_MANAGER.read().await;
+    if let Some(ref manager) = *guard {
+        let config = crate::common::backup::RestoreConfig {
+            backup_id: req.backup_id.clone(),
+            source: crate::common::backup::BackupDestination::Local {
+                path: "./backups".to_string(),
+            },
+            target_path: req.target_path.unwrap_or_else(|| "./restore".to_string()),
+            decryption_key: None,
+            point_in_time: None,
+            parallel_workers: 4,
+            verify_checksums: true,
+        };
+
+        match manager.start_restore(config).await {
+            Ok(restore_id) => {
+                AUDIT_LOGGER.log_event(
+                    AuditEventType::System,
+                    "admin".to_string(),
+                    Some(req.backup_id.clone()),
+                    format!("Started restore from backup {}", req.backup_id),
+                    None,
+                );
+                (
+                    StatusCode::ACCEPTED,
+                    axum::Json(json!({
+                        "status": "started",
+                        "restore_id": restore_id,
+                        "backup_id": req.backup_id
+                    })),
+                )
+                    .into_response()
+            }
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(json!({ "error": format!("{}", e) })),
+            )
+                .into_response(),
+        }
+    } else {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            axum::Json(json!({ "error": "Backup manager not initialized" })),
+        )
+            .into_response()
+    }
+}
+
+/// Get replication status (v0.8.0)
+async fn admin_replication_status() -> impl IntoResponse {
+    let guard = crate::common::replication::REPLICATION_MANAGER
+        .read()
+        .unwrap();
+    if let Some(ref manager) = *guard {
+        let config = manager.config();
+        let status = manager.get_status();
+        let healthy = manager.is_healthy();
+
+        axum::Json(json!({
+            "enabled": true,
+            "local_dc": config.local_dc,
+            "conflict_resolution": format!("{:?}", config.conflict_resolution),
+            "async_replication": config.async_replication,
+            "healthy": healthy,
+            "remote_dcs": status.iter().map(|s| json!({
+                "dc_id": s.dc_id,
+                "healthy": s.healthy,
+                "lag_secs": s.lag_secs,
+                "pending_events": s.pending_events,
+                "last_replicated_at": s.last_replicated_at,
+                "last_error": s.last_error
+            })).collect::<Vec<_>>()
+        }))
+    } else {
+        axum::Json(json!({
+            "enabled": false,
+            "message": "Replication not configured"
+        }))
+    }
+}
+
+/// List plugins (v0.8.0)
+async fn admin_list_plugins() -> impl IntoResponse {
+    let plugins = crate::common::plugin::get_plugin_manager()
+        .list_plugins()
+        .await;
+
+    let plugin_list: Vec<serde_json::Value> = plugins
+        .iter()
+        .map(|(info, state)| {
+            json!({
+                "id": info.id,
+                "name": info.name,
+                "description": info.description,
+                "version": info.version.to_string(),
+                "author": info.author,
+                "plugin_type": format!("{:?}", info.plugin_type),
+                "state": format!("{:?}", state)
+            })
+        })
+        .collect();
+
+    axum::Json(json!({
+        "plugins": plugin_list,
+        "total": plugin_list.len()
+    }))
+}
+
+/// Enable a plugin (v0.8.0)
+async fn admin_enable_plugin(Path(plugin_id): Path<String>) -> impl IntoResponse {
+    match crate::common::plugin::get_plugin_manager()
+        .enable(&plugin_id)
+        .await
+    {
+        Ok(()) => {
+            AUDIT_LOGGER.log_event(
+                AuditEventType::System,
+                "admin".to_string(),
+                Some(plugin_id.clone()),
+                "Enabled plugin".to_string(),
+                None,
+            );
+            (
+                StatusCode::OK,
+                axum::Json(json!({ "status": "enabled", "plugin_id": plugin_id })),
+            )
+                .into_response()
+        }
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            axum::Json(json!({ "error": format!("{}", e) })),
+        )
+            .into_response(),
+    }
+}
+
+/// Disable a plugin (v0.8.0)
+async fn admin_disable_plugin(Path(plugin_id): Path<String>) -> impl IntoResponse {
+    match crate::common::plugin::get_plugin_manager()
+        .disable(&plugin_id)
+        .await
+    {
+        Ok(()) => {
+            AUDIT_LOGGER.log_event(
+                AuditEventType::System,
+                "admin".to_string(),
+                Some(plugin_id.clone()),
+                "Disabled plugin".to_string(),
+                None,
+            );
+            (
+                StatusCode::OK,
+                axum::Json(json!({ "status": "disabled", "plugin_id": plugin_id })),
+            )
+                .into_response()
+        }
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            axum::Json(json!({ "error": format!("{}", e) })),
+        )
+            .into_response(),
+    }
+}
+
+/// Get CDC status (v0.8.0)
+async fn admin_cdc_status() -> impl IntoResponse {
+    // First get the data we need synchronously
+    let (enabled, sequence) = {
+        let guard = crate::common::cdc::CDC_MANAGER.read().unwrap();
+        if let Some(ref manager) = *guard {
+            (true, manager.current_sequence())
+        } else {
+            (false, 0)
+        }
+    };
+
+    if enabled {
+        // We can't easily call health_check with the current architecture,
+        // so we just return the sequence number and enabled status
+        axum::Json(json!({
+            "enabled": true,
+            "current_sequence": sequence,
+            "sinks": []
+        }))
+    } else {
+        axum::Json(json!({
+            "enabled": false,
+            "message": "CDC not configured"
+        }))
+    }
 }

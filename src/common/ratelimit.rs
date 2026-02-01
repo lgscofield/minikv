@@ -1,7 +1,4 @@
-//! Rate limiting middleware for HTTP endpoints (v0.5.0)
-//!
-//! This module provides a token bucket rate limiter with per-IP tracking.
-//! It can be configured with burst capacity and refill rate.
+//! Token bucket rate limiter with per-IP tracking.
 
 use axum::{
     body::Body,

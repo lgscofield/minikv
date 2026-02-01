@@ -15,6 +15,13 @@ pub mod ratelimit;
 pub mod tracing_middleware;
 pub mod utils;
 
+// v0.8.0 modules
+pub mod admin_ui;
+pub mod backup;
+pub mod cdc;
+pub mod plugin;
+pub mod replication;
+
 pub use auth::{ApiKey, AuthConfig, AuthContext, AuthError, AuthResult, KeyStore, Role, KEY_STORE};
 pub use auth_middleware::{
     auth_middleware, get_tenant_from_request, is_admin_request, require_admin_middleware,
@@ -41,3 +48,22 @@ pub use utils::{
 };
 
 pub use audit::{AuditEntry, AuditEventType, AuditLogger, AUDIT_LOGGER};
+
+// v0.8.0 re-exports
+pub use admin_ui::{admin_dashboard, create_admin_ui_router, DashboardStats};
+pub use backup::{
+    init_backup, BackupConfig, BackupDestination, BackupManager, BackupManifest, BackupProgress,
+    BackupStatus, BackupType, RestoreConfig, BACKUP_MANAGER,
+};
+pub use cdc::{
+    init_cdc, CDCConfig, CDCEvent, CDCManager, CDCMetadata, CDCOperation, SinkConfig, CDC_MANAGER,
+};
+pub use plugin::{
+    get_plugin_manager, Plugin, PluginConfig, PluginInfo, PluginManager, PluginState, PluginType,
+    PluginVersion, PLUGIN_MANAGER,
+};
+pub use replication::{
+    get_replication_manager, init_replication, ConflictResolution, ReplicationConfig,
+    ReplicationEvent, ReplicationEventType, ReplicationManager, ReplicationStatus, VectorClock,
+    REPLICATION_MANAGER,
+};

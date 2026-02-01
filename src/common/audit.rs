@@ -1,7 +1,4 @@
-//! Audit logging module for MiniKV v0.6.0+
-//!
-//! Provides structured audit logs for admin and sensitive actions.
-//! Logs to file and/or stdout. Integrate hooks in key management, auth, and data modification endpoints.
+//! Structured audit logging for admin and sensitive actions.
 
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;

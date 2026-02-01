@@ -60,13 +60,13 @@ echo "  Object size: $((OBJECT_SIZE / 1024 / 1024)) MB"
 echo ""
 
 check_deps
-echo -e "${GREEN}✓ All dependencies found${NC}"
+echo -e "${GREEN}[OK] All dependencies found${NC}"
 echo ""
 
 # Build
 echo -e "${YELLOW}Building release binaries...${NC}"
 cargo build --release --quiet
-echo -e "${GREEN}✓ Build complete${NC}"
+echo -e "${GREEN}[OK] Build complete${NC}"
 echo ""
 
 # Create temp directories
@@ -106,7 +106,7 @@ for i in $(seq 1 ${NUM_COORDS}); do
 done
 
 sleep 2
-echo -e "${GREEN}✓ Coordinators started${NC}"
+echo -e "${GREEN}[OK] Coordinators started${NC}"
 echo ""
 
 # Start volumes
@@ -128,7 +128,7 @@ for i in $(seq 1 ${NUM_VOLUMES}); do
 done
 
 sleep 2
-echo -e "${GREEN}✓ Volumes started${NC}"
+echo -e "${GREEN}[OK] Volumes started${NC}"
 echo ""
 
 # Wait for cluster to be ready
@@ -136,14 +136,14 @@ echo -n "Waiting for cluster to be ready"
 for i in {1..30}; do
     if curl -s "http://127.0.0.1:5000/health" > /dev/null 2>&1; then
         echo ""
-        echo -e "${GREEN}✓ Cluster ready${NC}"
+        echo -e "${GREEN}[OK] Cluster ready${NC}"
         break
     fi
     echo -n "."
     sleep 1
     if [ $i -eq 30 ]; then
         echo ""
-        echo -e "${RED}✗ Cluster failed to start${NC}"
+        echo -e "${RED}[FAIL] Cluster failed to start${NC}"
         cat "${BENCH_DIR}/coord1.log"
         exit 1
     fi
@@ -246,7 +246,7 @@ if [ -f "${BENCH_DIR}/summary.json" ]; then
     GET_P90=$(jq -r '.metrics.get_latency.values.p90' "${BENCH_DIR}/summary.json" 2>/dev/null || echo "N/A")
     GET_P95=$(jq -r '.metrics.get_latency.values.p95' "${BENCH_DIR}/summary.json" 2>/dev/null || echo "N/A")
     
-    echo "Host: $(uname -m) · $(sysctl -n hw.memsize 2>/dev/null | awk '{print $1/1024/1024/1024 " GB"}' || echo 'N/A') · $(uname -s)"
+    echo "Host: $(uname -m) | $(sysctl -n hw.memsize 2>/dev/null | awk '{print $1/1024/1024/1024 " GB"}' || echo 'N/A') | $(uname -s)"
     echo "Cluster: ${NUM_COORDS} coord + ${NUM_VOLUMES} volumes (replicas=${REPLICAS})"
     echo "Config: size=$((OBJECT_SIZE / 1024 / 1024)) MiB, VUs=${VUS}, Duration=${DURATION}"
     echo ""
@@ -264,4 +264,4 @@ fi
 echo ""
 echo -e "${GREEN}========================================${NC}"
 echo ""
-echo -e "${GREEN}✓ Benchmark complete${NC}"
+echo -e "${GREEN}[OK] Benchmark complete${NC}"

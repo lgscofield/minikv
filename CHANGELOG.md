@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.8.0] - 2026-02-01
+
+### Added - v0.8.0 Release
+
+#### Cross-Datacenter Replication
+- Asynchronous replication to remote datacenters
+- Multiple conflict resolution strategies:
+  - Last-Write-Wins (timestamp-based)
+  - Vector Clocks (causality tracking)
+  - Local-First (prefer local DC writes)
+  - Primary-First (prefer primary DC writes)
+- DC-aware routing for read/write operations
+- Configurable replication lag monitoring and alerts
+- Per-datacenter replication status tracking
+
+#### Change Data Capture (CDC)
+- Real-time capture of all data changes (INSERT, UPDATE, DELETE)
+- Configurable sinks for event delivery:
+  - Webhook sink (HTTP POST to external endpoints)
+  - Kafka sink (for event streaming platforms)
+  - File sink (for local debugging/archival)
+  - Memory sink (for testing)
+- Event filtering by operation type and key prefix
+- Sequence numbers for guaranteed ordering
+- Old value capture for UPDATE and DELETE operations
+
+#### Admin Web UI
+- Embedded web dashboard for cluster monitoring
+- Real-time cluster status visualization
+- API key management interface
+- Backup/restore controls with progress tracking
+- Plugin management UI
+- Cross-DC replication status monitoring
+- Responsive dark theme design
+
+#### Backup & Restore
+- Full backup support (complete snapshot)
+- Incremental backup support (changes since last backup)
+- Backup compression (configurable)
+- Backup encryption support
+- Multiple backup destinations:
+  - Local filesystem
+  - S3-compatible storage
+- Point-in-time recovery
+- Checksum verification during restore
+- Backup manifest with metadata
+
+#### Plugin System
+- Extensible plugin architecture
+- Plugin types:
+  - Storage plugins (custom backends)
+  - Auth plugins (custom authentication)
+  - Hook plugins (event listeners)
+  - Middleware plugins (request interceptors)
+- Plugin lifecycle management (load, enable, disable, unload)
+- Plugin dependencies and version compatibility
+- Built-in logging hook plugin example
+
+#### New API Endpoints
+- `GET /admin/ui` - Admin web dashboard
+- `POST /admin/backup` - Create a new backup
+- `GET /admin/backups` - List all backups
+- `GET /admin/backups/:id` - Get backup details
+- `DELETE /admin/backups/:id` - Delete a backup
+- `POST /admin/restore` - Restore from backup
+- `GET /admin/replication/status` - Replication status
+- `GET /admin/plugins` - List plugins
+- `POST /admin/plugins/:id/enable` - Enable a plugin
+- `POST /admin/plugins/:id/disable` - Disable a plugin
+- `GET /admin/cdc/status` - CDC status
+
+#### Technical Improvements
+- Added `async-trait` for async plugin traits
+- New modules: `replication`, `cdc`, `backup`, `plugin`, `admin_ui`
+- Comprehensive unit tests for all new features
+- Vector clock implementation for distributed causality
+
+---
+
+## [0.7.0] - 2026-01-25
+
 ### Added - v0.7.0 Release
 
 #### Streaming/batch import/export

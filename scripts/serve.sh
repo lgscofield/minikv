@@ -47,7 +47,7 @@ for i in $(seq 1 ${NUM_COORDS}); do
         --replicas 3 \
         > "./data/coord${i}.log" 2>&1 &
     
-    echo "  ✓ Coordinator $i: http://127.0.0.1:${COORD_HTTP}"
+    echo "  [OK] Coordinator $i: http://127.0.0.1:${COORD_HTTP}"
 done
 
 sleep 2
@@ -67,7 +67,7 @@ for i in $(seq 1 ${NUM_VOLUMES}); do
         --coordinators "http://127.0.0.1:5000" \
         > "./data/vol${i}.log" 2>&1 &
     
-    echo "  ✓ Volume $i: http://127.0.0.1:${VOL_HTTP}"
+    echo "  [OK] Volume $i: http://127.0.0.1:${VOL_HTTP}"
 done
 
 echo ""

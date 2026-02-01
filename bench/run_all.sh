@@ -34,7 +34,7 @@ for scenario in "${scenarios[@]}"; do
     
     echo ""
     echo "Running: ${desc}"
-    echo "─────────────────────────────────"
+    echo "-----------------------------------"
     
     k6 run \
         --out json="${RESULTS_DIR}/${name}.json" \
@@ -42,7 +42,7 @@ for scenario in "${scenarios[@]}"; do
         "bench/scenarios/${name}.js" \
         2>&1 | tee "${RESULTS_DIR}/${name}.log"
     
-    echo "✓ ${desc} completed"
+    echo "[OK] ${desc} completed"
 done
 
 echo ""

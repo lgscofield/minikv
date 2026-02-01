@@ -14,10 +14,10 @@ echo ""
 # Check coordinator health
 echo "Checking coordinator..."
 if ! curl -sf "${COORDINATOR}/health" > /dev/null; then
-    echo "✗ Coordinator unreachable"
+    echo "[FAIL] Coordinator unreachable"
     exit 1
 fi
-echo "✓ Coordinator healthy"
+echo "[OK] Coordinator healthy"
 
 # Run CLI verify command
 if [ "${DEEP}" = "true" ]; then

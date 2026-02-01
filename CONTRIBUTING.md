@@ -74,16 +74,14 @@ All **core distributed features** for v0.6.0 are implemented and production-read
 
 ## What’s Next? (Contributions welcome)
 
-The next big priorities (v0.7.0+) include:
+The next big priorities (v0.9.0+) include:
 
-- **Cross-datacenter replication** - Multi-region support with conflict resolution
-- **Change Data Capture (CDC)** - Stream of modifications for event-driven systems
-- **Transactions** - Multi-key atomic operations with ACID guarantees
-- **Secondary indexes** - Query by metadata/tags for flexible data access
+- **Kubernetes Operator** - Native K8s deployment and management
+- **GraphQL API** - Flexible query interface alongside REST
+- **Time-series optimizations** - Efficient storage for time-based data
+- **Geo-partitioning** - Data locality and compliance support
 - **Tiered storage** - Hot/warm/cold data tiers for cost optimization
-- **Admin Web UI** - Real-time dashboard with cluster visualization
-- **Backup & Restore** - Point-in-time recovery and scheduled backups
-- **Plugin system** - Extensible hooks for custom logic
+- **Transactions v2** - Distributed transactions with serializable isolation
 
 > *Interested in one of these, or have new ideas? Open a discussion or issue!*
 

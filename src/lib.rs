@@ -7,7 +7,14 @@
 //! - gRPC for internal coordination, HTTP for public API
 //! - Bloom filters and index snapshots for performance
 //!
-//! ## New in v0.5.0
+//! ## New in v0.8.0
+//! - Cross-datacenter replication with conflict resolution
+//! - Change Data Capture (CDC) for real-time event streaming
+//! - Admin Web UI for cluster monitoring and management
+//! - Full and incremental backup with restore support
+//! - Plugin system for extensibility
+//!
+//! ## v0.5.0 Features
 //! - TTL (Time-To-Live) support for automatic key expiration
 //! - LZ4 compression for storage efficiency
 //! - Rate limiting with per-IP token bucket algorithm

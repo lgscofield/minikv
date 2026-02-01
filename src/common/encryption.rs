@@ -1,12 +1,4 @@
-//! Encryption at rest module for MiniKV v0.6.0
-//!
-//! This module provides transparent encryption for stored data using:
-//! - AES-256-GCM for authenticated encryption
-//! - Key derivation from master key using HKDF
-//! - Per-object random nonces
-//!
-//! The encryption is designed to be transparent to the application layer,
-//! encrypting data before storage and decrypting on retrieval.
+//! Transparent encryption at rest using AES-256-GCM.
 
 use aes_gcm::{
     aead::{Aead, KeyInit},

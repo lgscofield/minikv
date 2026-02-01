@@ -1,8 +1,4 @@
-//!  Hashing utilities for minikv
-//!
-//! - BLAKE3 for content addressing (checksums, etags)
-//! - HRW (Highest Random Weight) for consistent placement
-//! - Sharding for partitioning keyspace
+//! Hashing utilities (BLAKE3, HRW, sharding).
 
 use blake3::Hasher;
 use std::collections::HashMap;

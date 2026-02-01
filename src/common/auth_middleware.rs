@@ -1,7 +1,4 @@
-//! Authentication middleware for axum (v0.6.0)
-//!
-//! This module provides middleware to protect routes with authentication.
-//! Supports both API keys and JWT tokens.
+//! Authentication middleware for axum routes.
 
 use axum::{
     body::Body,

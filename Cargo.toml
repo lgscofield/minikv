@@ -1,6 +1,6 @@
 [package]
 name = "minikv"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 authors = ["Em' <whispem@users.noreply.github.com>"]
 description = "A production-grade distributed KV store with Raft consensus in ~1,500 lines"
@@ -77,6 +77,8 @@ aes-gcm = "0.10"
 hkdf = "0.12"
 futures-util = "0.3"
 async-stream = "0.3"
+# v0.8.0 - Plugin system and async traits
+async-trait = "0.1"
 
 [build-dependencies]
 tonic-build = "0.12"

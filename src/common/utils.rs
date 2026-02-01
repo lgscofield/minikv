@@ -1,9 +1,4 @@
-//! Utility functions for minikv
-//!
-//! This module provides common utilities for encoding, formatting, and tracing.
-//! Tracing is used throughout the codebase for observability and debugging, and can be exported via OpenTelemetry.
-//!
-//! Security features (TLS, authentication) and cross-datacenter replication are planned for future releases.
+//! Common utilities for encoding, formatting, and tracing.
 
 use percent_encoding::{percent_decode_str, utf8_percent_encode, AsciiSet, CONTROLS};
 use serde::{Deserialize, Serialize};

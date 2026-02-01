@@ -1,10 +1,4 @@
-//! Authentication and Authorization module (v0.6.0)
-//!
-//! This module provides:
-//! - API key generation and validation
-//! - JWT token support for stateless authentication
-//! - Role-based access control (RBAC)
-//! - Tenant isolation for multi-tenancy
+//! Authentication and authorization with API keys, JWT, and RBAC.
 
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
