@@ -59,7 +59,6 @@ async fn handle_ws(mut socket: WebSocket) {
 // Global storage backend (default: in-memory)
 pub static STORAGE: Lazy<Storage> = Lazy::new(Storage::new_memory);
 
-
 /// Admin endpoint: triggers cluster repair
 async fn admin_repair(State(_state): State<CoordState>) -> impl IntoResponse {
     // Actual call to repair logic
@@ -453,13 +452,13 @@ pub fn create_router(state: CoordState) -> Router {
         .route("/watch/ws", axum::routing::get(watch_ws))
         .route("/s3/:bucket/:key", axum::routing::put(s3_put_object))
         .route("/s3/:bucket/:key", axum::routing::get(s3_get_object))
-            // .route("/schemas", axum::routing::post(schema_register)) // Removed
-            // .route("/schemas", axum::routing::get(schema_list)) // Removed
-            // .route("/schemas/:name", axum::routing::get(schema_get)) // Removed
-            // .route("/schemas/validate", axum::routing::post(schema_validate)) // Removed
-            // .route("/admin/tiering/stats", axum::routing::get(admin_tiering_stats)) // Removed
-            // .route("/ts/write", axum::routing::post(ts_write)) // Removed
-            // .route("/ts/query", axum::routing::post(ts_query)) // Removed
+        // .route("/schemas", axum::routing::post(schema_register)) // Removed
+        // .route("/schemas", axum::routing::get(schema_list)) // Removed
+        // .route("/schemas/:name", axum::routing::get(schema_get)) // Removed
+        // .route("/schemas/validate", axum::routing::post(schema_validate)) // Removed
+        // .route("/admin/tiering/stats", axum::routing::get(admin_tiering_stats)) // Removed
+        // .route("/ts/write", axum::routing::post(ts_write)) // Removed
+        // .route("/ts/query", axum::routing::post(ts_query)) // Removed
         .route("/:key", axum::routing::delete(delete_key))
         // Admin automation endpoints
         .route("/admin/repair", axum::routing::post(admin_repair))
@@ -526,7 +525,10 @@ pub fn create_router(state: CoordState) -> Router {
         // v0.9.0 endpoints
         // .route("/ts/write", axum::routing::post(ts_write)) // Duplicate removed
         // .route("/ts/query", axum::routing::post(ts_query)) // Duplicate removed
-        .route("/admin/timeseries/stats", axum::routing::get(admin_timeseries_stats))
+        .route(
+            "/admin/timeseries/stats",
+            axum::routing::get(admin_timeseries_stats),
+        )
         .route("/admin/geo/status", axum::routing::get(admin_geo_status))
         // Timeseries endpoints
         .route("/ts/write", axum::routing::post(ts_write))
@@ -1433,7 +1435,7 @@ async fn ts_write() -> impl IntoResponse {
         axum::Json(json!({
             "success": true,
             "message": "success"
-        }))
+        })),
     )
 }
 
@@ -1445,6 +1447,6 @@ async fn ts_query() -> impl IntoResponse {
             "success": true,
             "message": "success",
             "points": []
-        }))
+        })),
     )
 }
