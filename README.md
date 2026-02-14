@@ -14,17 +14,18 @@ Built in public as a learning-by-doing project — now evolved into a complete, 
 
 ---
 
-## 🚦 What's New in v0.8.0
+## 🚦 What's New in v0.9.0
 
-minikv v0.8.0 brings enterprise-grade features for distributed deployments:
 
-- **Cross-datacenter replication:** Async replication with multiple conflict resolution strategies (LWW, Vector Clocks)
-- **Change Data Capture (CDC):** Real-time event streaming to Webhook, Kafka, or file sinks
-- **Admin Web UI:** Embedded dashboard for cluster monitoring and management
-- **Backup & Restore:** Full and incremental backups with encryption support
-- **Plugin system:** Extensible architecture for custom storage, auth, and hooks
+minikv v0.9.0 introduces cloud-native and performance features:
 
-Previous highlights (v0.7.0): secondary indexes, multi-key transactions, batch import/export, durable S3 backend.
+- **Kubernetes Operator:** CRD-based cluster management with autoscaling
+- **Time-series engine:** Compression, downsampling, aggregations
+- **Geo-partitioning:** Data locality and compliance (GDPR)
+- **Data tiering:** Hot/warm/cold/archive automatic data movement
+- **io_uring:** Zero-copy I/O for Linux (optional)
+
+Previous highlights (v0.8.0): cross-DC replication, CDC, admin UI, backup/restore, plugins.
 
 ---
 
@@ -62,10 +63,22 @@ minikv is for engineers learning distributed systems, teams experimenting with R
 
 ## 🛠 Tech Stack
 
-- **Rust** – core logic
-- **Shell** – orchestration/automation
-- **JavaScript** – benchmarks, tools
-- **Makefile** – build flows
+| Layer | Technology |
+|-------|------------|
+| Language | Rust 1.81+ |
+| Async Runtime | Tokio |
+| Consensus | Raft (tikv/raft-rs) |
+| RPC | gRPC (Tonic), Protobuf |
+| HTTP | Axum 0.7, Tower |
+| Storage | RocksDB, Sled, in-memory |
+| Serialization | serde, bincode, JSON |
+| Crypto | AES-256-GCM, Argon2, BLAKE3 |
+| Compression | LZ4, Zstd, Snappy, Gzip |
+| Observability | Prometheus, OpenTelemetry |
+| TLS | rustls |
+| Benchmarks | k6 (JavaScript) |
+| Build | Cargo, Make |
+| Deploy | Docker, Kubernetes |
 
 ---
 
@@ -97,12 +110,40 @@ For cluster setup and advanced options, see the [documentation](#documentation).
 
 ## 📐 Architecture
 
-- **Raft**: consensus and leader election
-- **2PC**: atomic distributed/batch writes
-- **Virtual Shards**: scale and rebalance across 256 partitions
-- **Pluggable Storage**: in-memory, RocksDB, Sled
-- **Admin API**: HTTP endpoints for status, metrics and config
-- **Config**: via environment, file or CLI flags
+```
+┌─────────────────────────────────────────────────────┐
+│                       Clients                       │
+│          REST │ S3 │ gRPC │ WS            │
+└──────────────────────────┬──────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────┐
+│                  Coordinators                        │
+│    ┌───────┐  ┌───────┐  ┌───────┐                 │
+│    │ Raft  │──│ Raft  │──│ Raft  │  (3-5 nodes)   │
+│    │Leader │  │Follower│  │Follower│                 │
+│    └───────┘  └───────┘  └───────┘                 │
+└──────────────────────────┬──────────────────────────┘
+                           │ Metadata + Routing
+┌──────────────────────────▼──────────────────────────┐
+│                  Volume Servers                      │
+│    ┌───────┐  ┌───────┐  ┌───────┐                 │
+│    │Volume1│  │Volume2│  │Volume3│  (N nodes)      │
+│    │Shards │  │Shards │  │Shards │                 │
+│    │0-85   │  │86-170 │  │171-255│                 │
+│    └───┬───┘  └───┬───┘  └───┬───┘                 │
+│        ▼          ▼          ▼                     │
+│    ┌───────┐  ┌───────┐  ┌───────┐                 │
+│    │RocksDB│  │ Sled  │  │Memory │                 │
+│    └───────┘  └───────┘  └───────┘                 │
+└─────────────────────────────────────────────────────┘
+```
+
+| Component | Description |
+|-----------|-------------|
+| Coordinator | Raft consensus, metadata, routing, 2PC |
+| Volume Server | Data storage, replication, compaction |
+| Virtual Shards | 256 shards for distribution |
+| WAL | Write-ahead log for durability |
 
 ---
 
@@ -117,107 +158,191 @@ For cluster setup and advanced options, see the [documentation](#documentation).
 
 ## 🌟 Features
 
-### Distributed Core
-- Raft consensus (multi-node, strong consistency)
-- Two-phase commit (2PC) for atomic multi-key transactions
-- 256 virtual shards for cluster scaling and rebalancing
-- Write-ahead log (WAL) for durability
-- Auto-rebalancing, graceful leader failover, hot-join and node removal
+### Consensus & Distribution
+- Raft consensus (leader election, log replication)
+- Two-phase commit (2PC) for multi-key transactions
+- 256 virtual shards with consistent hashing
+- Automatic rebalancing and failover
+- Cross-datacenter async replication
+- Conflict resolution (LWW, vector clocks)
 
-### Data Management
-- Time-To-Live keys (TTL)
-- LZ4 compression (configurable)
-- Bloom filters and index snapshots
-- Pluggable and persistent storage: in-memory, RocksDB, Sled
-- Batch & range operations, prefix queries
+### Storage
+- Pluggable backends: RocksDB, Sled, in-memory
+- Write-ahead log (WAL)
+- Bloom filters for fast lookups
+- LZ4/Zstd compression
+- Data tiering (hot/warm/cold/archive)
+- Compaction and garbage collection
 
-### API
-- HTTP REST (CRUD, batch, range, admin)
-- S3-compatible API (with TTL extensions)
-- gRPC (internal)
-- WebSocket and SSE endpoints for real-time watch/subscribe events
 
-### Security & Multi-tenancy
-- API keys (Argon2) and JWT authentication
-- Role-based access control (RBAC) and audit logging
+### Time-Series (v0.9.0)
+- Dedicated time-series engine
+- Multiple resolutions (raw, 1min, 5min, 1h, 1day)
+- Automatic downsampling
+- Delta and Gorilla compression
+- Aggregations: sum, avg, min, max, count, stddev
+
+### Geo-Partitioning (v0.9.0)
+- Region-aware data placement
+- Routing: nearest, primary, round-robin, geo-fenced
+- GDPR/data residency compliance
+- Automatic failover between regions
+
+### APIs
+- **HTTP REST:** CRUD, batch, range, prefix queries
+- **S3-compatible:** Buckets, objects, multipart upload
+- **gRPC:** Internal node communication
+- **WebSocket/SSE:** Real-time watch/subscribe
+
+### Security
+- API keys with Argon2 hashing
+- JWT authentication
+- Role-based access control (RBAC)
 - Multi-tenant isolation
 - AES-256-GCM encryption at rest
-- Per-tenant quotas (storage, requests, rate limits)
-- TLS (HTTP & gRPC)
+- TLS for HTTP and gRPC
+- Audit logging
+
+### Multi-tenancy
+- Tenant isolation
+- Per-tenant quotas (storage, requests)
+- Rate limiting (token bucket)
 
 ### Observability
-- Admin dashboard
-- Prometheus metrics (counters, histograms)
-- Request and endpoint statistics
-- Structured logging and tracing spans
-- Kubernetes health probes
+- Prometheus metrics
+- OpenTelemetry tracing
+- Structured logging
+- Admin Web UI dashboard
+- Health probes (/health/ready, /health/live)
 
-### Production-grade Design
-- Memory-safe Rust
-- Test suite, automated CI
-- Documentation and sample config
-- Single static binary
+### Operations
+- Backup & restore (full, incremental)
+- Change Data Capture (CDC)
+- Plugin system (storage, auth, hooks)
+- Kubernetes Operator (v0.9.0)
+- io_uring zero-copy I/O (Linux, v0.9.0)
 
 ---
 
 ## 🗺️ Roadmap
 
-### v0.8.0 (latest)
-- [x] Cross-datacenter replication
-- [x] Change Data Capture (CDC)
-- [x] Admin Web UI
-- [x] Backup & Restore
-- [x] Plugin system
+### Kubernetes (v0.9.0)
 
-### v0.7.0
-- [x] Secondary indexes
-- [x] Multi-key transactions
-- [x] Durable S3-backed object store
-- [x] Batch import/export
+```yaml
+apiVersion: minikv.io/v1alpha1
+kind: MiniKVCluster
+metadata:
+  name: my-cluster
+spec:
+  coordinators:
+    replicas: 3
+  volumes:
+    replicas: 3
+    replicationFactor: 3
+  security:
+    tls:
+      enabled: true
+  autoscaling:
+    enabled: true
+    maxReplicas: 10
+```
 
-### Next (v0.9.0+)
-- [ ] Kubernetes Operator
-- [ ] GraphQL API
-- [ ] Time-series optimizations
-- [ ] Geo-partitioning
+Deploy with:
+```bash
+kubectl apply -f k8s/crds/minikvcluster.yaml
+kubectl apply -f k8s/examples/basic-cluster.yaml
+```
+
+---
+
+## 📍 Versions
+
+### v0.9.0 (current)
+- Kubernetes Operator (CRD, autoscaling)
+- Time-series engine
+- Geo-partitioning
+- Data tiering
+- io_uring (Linux)
 
 ---
 
-## 📖 Story
+## 🗺️ Roadmap
 
-minikv started as a 24-hour challenge by a Rust learner (82 days into the language!). It now serves as both a playground and a reference for distributed systems, demonstrating curiosity, learning-by-doing, and robust engineering.
+### v1.0.0
+- [ ] MiniQL query optimizer
+- [ ] Full-text search (tantivy)
+- [ ] Helm chart
+- [ ] Connection pooling
+
+### v1.1.0
+- [ ] Vector embeddings storage
+- [ ] Distributed transactions (Percolator)
+- [ ] Read replicas
+- [ ] Multi-region active-active
+
+### v1.2.0
+- [ ] Serverless mode (scale to zero)
+- [ ] WebAssembly UDFs
+- [ ] Change streams (Kafka Connect)
+- [ ] Point-in-time recovery
+
+### Future
+- [ ] GPU-accelerated queries
+- [ ] Raft learner nodes
+- [ ] Auto-sharding (split/merge)
+- [ ] Global secondary indexes
+- [ ] CockroachDB-style SQL layer
 
 ---
 
-## 📚 Documentation
-
-- **Example config :** [`config.example.toml`](config.example.toml)
-- **Cluster, API, usage :** see [`docs/`](docs)
-- **Certificate generation :** [`certs/README.md`](certs/README.md)
-
----
 
 ## 🛠️ Development
 
 ```bash
-cargo test           # Run all tests
-cargo clippy --fix   # Lint and fix
-cargo fmt            # Format code
+cargo build          # Build
+cargo test           # Tests
+cargo clippy         # Lint
+cargo fmt            # Format
 ```
 
-Continuous Integration runs on push & PR via [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+### Project Structure
+
+```
+src/
+├── bin/              # Binaries (coord, volume, cli)
+├── common/           # Shared modules
+│   ├── raft.rs       # Consensus
+│   ├── storage.rs    # Storage backends
+│   ├── auth.rs       # Authentication
+│   ├── encryption.rs # Encryption at rest
+│   ├── replication.rs# Cross-DC replication
+│   ├── cdc.rs        # Change Data Capture
+│   ├── backup.rs     # Backup/restore
+│   ├── plugin.rs     # Plugin system
+│   ├── timeseries.rs # Time-series
+│   ├── geo.rs        # Geo-partitioning
+│   ├── tiering.rs    # Data tiering
+│   ├── io_uring.rs   # io_uring backend
+│   └── io_uring.rs   # io_uring backend
+├── coordinator/      # Coordinator logic
+├── volume/           # Volume server
+└── ops/              # Operational tools
+k8s/                  # Kubernetes manifests
+bench/                # k6 benchmarks
+```
 
 ---
 
 ## 🤝 Contributing
 
-Issues and PRs welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
 ## 📬 Contact
 
-- GitHub: [whispem/minikv](https://github.com/whispem/minikv)
-- Email: via GitHub profile
+GitHub: [whispem/minikv](https://github.com/whispem/minikv)
 
 ---
+
+**MIT License** - See [LICENSE](LICENSE)

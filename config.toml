@@ -1,3 +1,7 @@
 node_id = 'coord-s3'
 role = 'coordinator'
 replicas = 1
+
+# Custom ports for coordinator
+bind_addr = "0.0.0.0:8000"
+grpc_addr = "0.0.0.0:8001"

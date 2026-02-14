@@ -22,7 +22,19 @@ pub mod cdc;
 pub mod plugin;
 pub mod replication;
 
-pub use auth::{ApiKey, AuthConfig, AuthContext, AuthError, AuthResult, KeyStore, Role, KEY_STORE};
+// v0.9.0 modules
+pub mod geo;
+pub mod io_uring;
+pub mod k8s_operator;
+/// Data tiering (hot/warm/cold/archive)
+pub mod tiering;
+/// Time-series engine (multiple resolutions, compression, aggregation)
+pub mod timeseries;
+// Removed schema module and its re-exports
+// pub mod schema;
+// pub use schema::{
+//     get_schema_registry, init_schema, Schema, SchemaConfig, SchemaRegistry, SchemaVersion,
+// };
 pub use auth_middleware::{
     auth_middleware, get_tenant_from_request, is_admin_request, require_admin_middleware,
     require_write_middleware, AuthExtension, AuthState,
@@ -67,3 +79,8 @@ pub use replication::{
     ReplicationEvent, ReplicationEventType, ReplicationManager, ReplicationStatus, VectorClock,
     REPLICATION_MANAGER,
 };
+
+// v0.9.0 re-exports
+pub use geo::{GeoConfig, GeoLocation, GeoRouter, RegionConfig, RoutingStrategy};
+pub use io_uring::{IoUring, IoUringConfig, IoUringStats};
+pub use k8s_operator::{MiniKVClusterSpec, MiniKVController};

@@ -22,11 +22,11 @@ enum Commands {
         id: String,
 
         /// Bind address for HTTP
-        #[arg(long, default_value = "0.0.0.0:5000")]
+        #[arg(long, default_value = "0.0.0.0:8000")]
         bind: String,
 
         /// Bind address for gRPC
-        #[arg(long, default_value = "0.0.0.0:5001")]
+        #[arg(long, default_value = "0.0.0.0:8001")]
         grpc: String,
 
         /// Database directory

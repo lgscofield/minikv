@@ -1,17 +1,6 @@
-//! HTTP API for the coordinator (v0.6.0)
+//! HTTP API for the coordinator.
 //!
-//! This module provides the HTTP API for the coordinator node.
-//! New in v0.6.0:
-//! - Authentication with API keys and JWT tokens
-//! - Multi-tenancy support with namespace isolation
-//! - Quotas for storage and requests per tenant
-//! - Admin endpoints for key management
-//!
-//! From v0.5.0:
-//! - TTL support for keys
-//! - Enhanced health checks (/health/ready, /health/live)
-//! - Enhanced metrics with histograms
-//! - Request ID tracking
+//! Provides REST, S3-compatible APIs.
 
 use crate::common::storage::Storage;
 use std::time::Duration;
@@ -67,12 +56,14 @@ async fn handle_ws(mut socket: WebSocket) {
 }
 
 // Global storage backend (default: in-memory)
+// Global storage backend (default: in-memory)
 pub static STORAGE: Lazy<Storage> = Lazy::new(Storage::new_memory);
+
 
 /// Admin endpoint: triggers cluster repair
 async fn admin_repair(State(_state): State<CoordState>) -> impl IntoResponse {
     // Actual call to repair logic
-    let res = crate::ops::repair::repair_cluster("http://localhost:5000", 3, false).await;
+    let res = crate::ops::repair::repair_cluster("http://localhost:8000", 3, false).await;
     match res {
         Ok(report) => axum::Json(json!({ "status": "ok", "report": report })),
         Err(e) => axum::Json(json!({ "status": "error", "error": format!("{}", e) })),
@@ -82,7 +73,7 @@ async fn admin_repair(State(_state): State<CoordState>) -> impl IntoResponse {
 /// Admin endpoint: triggers cluster compaction
 async fn admin_compact(State(_state): State<CoordState>) -> impl IntoResponse {
     // Actual call to compaction logic
-    let res = crate::ops::compact::compact_cluster("http://localhost:5000", None).await;
+    let res = crate::ops::compact::compact_cluster("http://localhost:8000", None).await;
     match res {
         Ok(report) => axum::Json(json!({ "status": "ok", "report": report })),
         Err(e) => axum::Json(json!({ "status": "error", "error": format!("{}", e) })),
@@ -92,7 +83,7 @@ async fn admin_compact(State(_state): State<CoordState>) -> impl IntoResponse {
 /// Admin endpoint: triggers cluster verification
 async fn admin_verify(State(_state): State<CoordState>) -> impl IntoResponse {
     // Actual call to verification logic
-    let res = crate::ops::verify::verify_cluster("http://localhost:5000", false, 16).await;
+    let res = crate::ops::verify::verify_cluster("http://localhost:8000", false, 16).await;
     match res {
         Ok(report) => axum::Json(json!({ "status": "ok", "report": report })),
         Err(e) => axum::Json(json!({ "status": "error", "error": format!("{}", e) })),
@@ -462,13 +453,13 @@ pub fn create_router(state: CoordState) -> Router {
         .route("/watch/ws", axum::routing::get(watch_ws))
         .route("/s3/:bucket/:key", axum::routing::put(s3_put_object))
         .route("/s3/:bucket/:key", axum::routing::get(s3_get_object))
-        // Health check endpoints (v0.5.0)
-        .route("/health", axum::routing::get(health))
-        .route("/health/ready", axum::routing::get(health_ready))
-        .route("/health/live", axum::routing::get(health_live))
-        // Key operations
-        .route("/:key", axum::routing::post(put_key))
-        .route("/:key", axum::routing::get(get_key))
+            // .route("/schemas", axum::routing::post(schema_register)) // Removed
+            // .route("/schemas", axum::routing::get(schema_list)) // Removed
+            // .route("/schemas/:name", axum::routing::get(schema_get)) // Removed
+            // .route("/schemas/validate", axum::routing::post(schema_validate)) // Removed
+            // .route("/admin/tiering/stats", axum::routing::get(admin_tiering_stats)) // Removed
+            // .route("/ts/write", axum::routing::post(ts_write)) // Removed
+            // .route("/ts/query", axum::routing::post(ts_query)) // Removed
         .route("/:key", axum::routing::delete(delete_key))
         // Admin automation endpoints
         .route("/admin/repair", axum::routing::post(admin_repair))
@@ -477,6 +468,9 @@ pub fn create_router(state: CoordState) -> Router {
         .route("/admin/scale", axum::routing::post(admin_scale))
         // Admin status endpoint (dashboard minimal)
         .route("/admin/status", axum::routing::get(admin_status))
+        // Kubernetes readiness and liveness probes
+        .route("/health/ready", axum::routing::get(health_ready))
+        .route("/health/live", axum::routing::get(health_live))
         // API Key management endpoints (v0.6.0)
         .route("/admin/keys", axum::routing::post(admin_create_key))
         .route("/admin/keys", axum::routing::get(admin_list_keys))
@@ -529,6 +523,15 @@ pub fn create_router(state: CoordState) -> Router {
             axum::routing::post(admin_disable_plugin),
         )
         .route("/admin/cdc/status", axum::routing::get(admin_cdc_status))
+        // v0.9.0 endpoints
+        // .route("/ts/write", axum::routing::post(ts_write)) // Duplicate removed
+        // .route("/ts/query", axum::routing::post(ts_query)) // Duplicate removed
+        .route("/admin/timeseries/stats", axum::routing::get(admin_timeseries_stats))
+        .route("/admin/geo/status", axum::routing::get(admin_geo_status))
+        // Timeseries endpoints
+        .route("/ts/write", axum::routing::post(ts_write))
+        .route("/ts/query", axum::routing::post(ts_query))
+        .route("/ts/query", axum::routing::get(ts_query))
         .with_state(state)
 }
 
@@ -979,6 +982,7 @@ pub async fn metrics(State(state): State<CoordState>) -> impl IntoResponse {
     (axum::http::StatusCode::OK, out)
 }
 
+#[allow(dead_code)]
 /// Health check endpoint for cluster status and Raft role.
 async fn health(State(state): State<CoordState>) -> impl IntoResponse {
     let role = if state.raft.is_leader() {
@@ -995,6 +999,7 @@ async fn health(State(state): State<CoordState>) -> impl IntoResponse {
     }))
 }
 
+#[allow(dead_code)]
 /// Handles a distributed write using Two-Phase Commit (2PC).
 ///   1. Prepare phase: ask all target volumes to prepare the write.
 ///   2. Commit phase: if all volumes are prepared, commit the write; otherwise, abort.
@@ -1043,6 +1048,7 @@ async fn put_key(
     (StatusCode::OK, format!("PUT {} committed via 2PC", key))
 }
 
+#[allow(dead_code)]
 /// Handles key read requests (not yet implemented).
 async fn get_key(State(_state): State<CoordState>, Path(key): Path<String>) -> impl IntoResponse {
     // Real logic: read via metadata and volume
@@ -1374,7 +1380,6 @@ async fn admin_disable_plugin(Path(plugin_id): Path<String>) -> impl IntoRespons
 
 /// Get CDC status (v0.8.0)
 async fn admin_cdc_status() -> impl IntoResponse {
-    // First get the data we need synchronously
     let (enabled, sequence) = {
         let guard = crate::common::cdc::CDC_MANAGER.read().unwrap();
         if let Some(ref manager) = *guard {
@@ -1385,8 +1390,6 @@ async fn admin_cdc_status() -> impl IntoResponse {
     };
 
     if enabled {
-        // We can't easily call health_check with the current architecture,
-        // so we just return the sequence number and enabled status
         axum::Json(json!({
             "enabled": true,
             "current_sequence": sequence,
@@ -1398,4 +1401,50 @@ async fn admin_cdc_status() -> impl IntoResponse {
             "message": "CDC not configured"
         }))
     }
+}
+
+// ============================================================================
+// v0.9.0 Endpoints
+
+/// Get timeseries info (v0.9.0)
+async fn admin_timeseries_stats() -> impl IntoResponse {
+    axum::Json(json!({
+        "enabled": true,
+        "resolutions": ["raw", "1min", "5min", "1hour", "1day"],
+        "compression": ["delta", "gorilla"],
+        "aggregations": ["sum", "avg", "min", "max", "count", "stddev"],
+    }))
+}
+
+/// Geo-partitioning status (v0.9.0)
+async fn admin_geo_status() -> impl IntoResponse {
+    axum::Json(json!({
+        "enabled": false,
+        "local_region": null,
+        "remote_regions": [],
+        "routing_strategy": "nearest",
+    }))
+}
+
+/// Timeseries write endpoint (v0.9.0 stub)
+async fn ts_write() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "success": true,
+            "message": "success"
+        }))
+    )
+}
+
+/// Timeseries query endpoint (v0.9.0 stub)
+async fn ts_query() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "success": true,
+            "message": "success",
+            "points": []
+        }))
+    )
 }

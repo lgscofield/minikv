@@ -1,0 +1,213 @@
+# Production MiniKV cluster
+apiVersion: minikv.io/v1alpha1
+kind: MiniKVCluster
+metadata:
+  name: minikv-production
+  namespace: minikv-prod
+  labels:
+    environment: production
+    team: platform
+spec:
+  coordinators:
+    replicas: 5
+    image: ghcr.io/whispem/minikv-coord:0.9.0
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+    storage:
+      size: "50Gi"
+      storageClassName: "fast-ssd"
+
+  volumes:
+    replicas: 5
+    image: ghcr.io/whispem/minikv-volume:0.9.0
+    replicationFactor: 3
+    resources:
+      requests:
+        cpu: "1"
+        memory: "4Gi"
+      limits:
+        cpu: "4"
+        memory: "16Gi"
+    storage:
+      size: "500Gi"
+      storageClassName: "fast-ssd"
+
+  security:
+    tls:
+      enabled: true
+      secretName: minikv-prod-tls
+    authentication:
+      enabled: true
+      adminSecretName: minikv-prod-admin
+    encryption:
+      atRest: true
+      keySecretName: minikv-prod-encryption
+
+  observability:
+    metrics:
+      enabled: true
+      port: 9090
+    tracing:
+      enabled: true
+      endpoint: "http://jaeger-collector.observability:14268/api/traces"
+
+  autoscaling:
+    enabled: true
+    minReplicas: 5
+    maxReplicas: 20
+    targetCPUUtilization: 70
+    targetMemoryUtilization: 75
+    scaleDownStabilization: 600
+
+  backup:
+    enabled: true
+    schedule: "0 3 * * *"
+    retention: 30
+    destination:
+      type: s3
+      bucket: "minikv-backups-prod"
+      secretName: minikv-s3-credentials
+
+  geo:
+    enabled: true
+    region: "us-east-1"
+    zone: "us-east-1a"
+    remoteRegions:
+      - name: "us-west-2"
+        endpoint: "https://minikv-prod.us-west-2.example.com:5000"
+        priority: 1
+      - name: "eu-west-1"
+        endpoint: "https://minikv-prod.eu-west-1.example.com:5000"
+        priority: 2
+
+  timeseries:
+    enabled: true
+    retentionDays: 90
+    downsampleRules:
+      - after: "7d"
+        resolution: "1h"
+      - after: "30d"
+        resolution: "1d"
+
+  tiering:
+    enabled: true
+    hotTier:
+      maxAge: "24h"
+      storageClass: "fast-nvme"
+    warmTier:
+      maxAge: "7d"
+      storageClass: "fast-ssd"
+    coldTier:
+      storageClass: "standard-hdd"
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: minikv-prod
+  labels:
+    environment: production
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: minikv-network-policy
+  namespace: minikv-prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: minikv
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9090
+  egress:
+    - to:
+        - podSelector: {}
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minikv-ingress
+  namespace: minikv-prod
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - minikv.example.com
+      secretName: minikv-ingress-tls
+  rules:
+    - host: minikv.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minikv-production-coordinator
+                port:
+                  number: 8080
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: minikv-coordinator-pdb
+  namespace: minikv-prod
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minikv
+      app.kubernetes.io/component: coordinator
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: minikv-volume-pdb
+  namespace: minikv-prod
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minikv
+      app.kubernetes.io/component: volume
