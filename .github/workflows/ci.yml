@@ -36,7 +36,7 @@ jobs:
 
       - name: Start minikv coordinator (background)
         run: |
-          cargo run --bin coord --release &
+          cargo run --bin minikv-coord --release -- serve --id 1 &
           sleep 5
 
       - name: Test
