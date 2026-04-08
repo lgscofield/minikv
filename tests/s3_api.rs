@@ -137,7 +137,7 @@ async fn wait_for_endpoint(childs: &mut [&mut Child], url: &str) {
                 panic!("A server exited prematurely (exit code {status})");
             }
         }
-        if start.elapsed() > Duration::from_secs(20) {
+        if start.elapsed() > Duration::from_secs(30) {
             panic!("Timeout: endpoint not ready at {url}");
         }
         if let Ok(resp) = client.get(url).send().await {
@@ -173,6 +173,9 @@ async fn test_s3_put_get() {
     let vol_grpc = get_free_port();
 
     let (mut coord, coord_data, config_path) = start_coord(coord_http, coord_grpc, &test_id);
+    let live_url = format!("http://127.0.0.1:{}/health/live", coord_http);
+    wait_for_endpoint(&mut [&mut coord], &live_url).await;
+
     let (mut volume, vol_data, vol_wal) = start_volume(vol_http, vol_grpc, coord_http, &test_id);
 
     let s3_url = format!("http://127.0.0.1:{}/s3/testbucket/hello.txt", coord_http);
