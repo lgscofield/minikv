@@ -1,6 +1,7 @@
 //! Basic test for the S3-compatible API (PUT then GET)
 use reqwest::Client;
 use std::env;
+use std::fs;
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use std::thread::sleep;
@@ -14,65 +15,117 @@ fn get_free_port() -> u16 {
         .port()
 }
 
-fn start_coord(http_port: u16, grpc_port: u16) -> Child {
-    let _ = std::fs::remove_dir_all("coord-s3-data");
-    let _ = std::fs::create_dir_all("coord-s3-data");
-    std::fs::write(
-        "config.toml",
-        "node_id = 'coord-s3'\nrole = 'coordinator'\nreplicas = 1\n",
+fn resolve_bin(var_names: &[&str]) -> Option<String> {
+    for name in var_names {
+        if let Ok(value) = env::var(name) {
+            return Some(value);
+        }
+    }
+    None
+}
+
+fn start_coord(http_port: u16, grpc_port: u16, test_id: &str) -> (Child, String, String) {
+    let coord_bin = resolve_bin(&["CARGO_BIN_EXE_minikv-coord", "CARGO_BIN_EXE_minikv_coord"])
+        .expect("Coordinator binary env var not set by cargo test");
+    let coord_data = format!("coord-s3-data-{}", test_id);
+    let _ = fs::remove_dir_all(&coord_data);
+    let _ = fs::create_dir_all(&coord_data);
+    let config_path = format!("/tmp/minikv-config-s3-{}.toml", test_id);
+    fs::write(
+        &config_path,
+        format!(
+            "node_id = 'coord-s3-{}'\nrole = 'coordinator'\nreplicas = 1\n",
+            test_id
+        ),
     )
     .expect("Failed to write config.toml");
-    let mut cmd = Command::new(
-        env::var("CARGO_BIN_EXE_minikv-coord")
-            .expect("CARGO_BIN_EXE_minikv-coord not set by cargo test"),
-    );
+
+    let mut cmd = Command::new(coord_bin);
     cmd.args([
         "serve",
         "--id",
-        "coord-s3",
+        &format!("coord-s3-{}", test_id),
         "--bind",
         &format!("127.0.0.1:{}", http_port),
         "--grpc",
         &format!("127.0.0.1:{}", grpc_port),
         "--db",
-        "./coord-s3-data",
+        &coord_data,
     ]);
-    let log = std::fs::File::create("coord-s3.log").expect("Failed to create log file");
+    cmd.env_clear();
+    for (key, value) in env::vars() {
+        if key != "MINIKV_CONFIG" && key != "RUST_LOG" && key != "RUST_BACKTRACE" {
+            cmd.env(&key, &value);
+        }
+    }
+    cmd.env("MINIKV_CONFIG", &config_path);
+    cmd.env("RUST_LOG", "debug");
+    cmd.env("RUST_BACKTRACE", "1");
+
+    let log =
+        fs::File::create(format!("coord-s3-{}.log", test_id)).expect("Failed to create log file");
     let log_err = log.try_clone().expect("Failed to clone log file");
     cmd.stdout(Stdio::from(log));
     cmd.stderr(Stdio::from(log_err));
-    cmd.spawn().expect("Failed to launch minikv-coord server")
+
+    (
+        cmd.spawn().expect("Failed to launch minikv-coord server"),
+        coord_data,
+        config_path,
+    )
 }
 
-fn start_volume(http_port: u16, grpc_port: u16, coord_http_port: u16) -> Child {
-    let _ = std::fs::remove_dir_all("vol-s3-data");
-    let _ = std::fs::remove_dir_all("vol-s3-wal");
-    let _ = std::fs::create_dir_all("vol-s3-data");
-    let _ = std::fs::create_dir_all("vol-s3-wal");
-    let mut cmd = Command::new(
-        env::var("CARGO_BIN_EXE_minikv-volume")
-            .expect("CARGO_BIN_EXE_minikv-volume not set by cargo test"),
-    );
+fn start_volume(
+    http_port: u16,
+    grpc_port: u16,
+    coord_http_port: u16,
+    test_id: &str,
+) -> (Child, String, String) {
+    let volume_bin = resolve_bin(&["CARGO_BIN_EXE_minikv-volume", "CARGO_BIN_EXE_minikv_volume"])
+        .expect("Volume binary env var not set by cargo test");
+    let vol_data = format!("vol-s3-data-{}", test_id);
+    let vol_wal = format!("vol-s3-wal-{}", test_id);
+    let _ = fs::remove_dir_all(&vol_data);
+    let _ = fs::remove_dir_all(&vol_wal);
+    let _ = fs::create_dir_all(&vol_data);
+    let _ = fs::create_dir_all(&vol_wal);
+
+    let mut cmd = Command::new(volume_bin);
     cmd.args([
         "serve",
         "--id",
-        "vol-s3",
+        &format!("vol-s3-{}", test_id),
         "--bind",
         &format!("127.0.0.1:{}", http_port),
         "--grpc",
         &format!("127.0.0.1:{}", grpc_port),
         "--data",
-        "./vol-s3-data",
+        &vol_data,
         "--wal",
-        "./vol-s3-wal",
+        &vol_wal,
         "--coordinators",
         &format!("http://127.0.0.1:{}", coord_http_port),
     ]);
-    let log = std::fs::File::create("vol-s3.log").expect("Failed to create log file");
+    cmd.env_clear();
+    for (key, value) in env::vars() {
+        if key != "MINIKV_CONFIG" && key != "RUST_LOG" && key != "RUST_BACKTRACE" {
+            cmd.env(&key, &value);
+        }
+    }
+    cmd.env("RUST_LOG", "debug");
+    cmd.env("RUST_BACKTRACE", "1");
+
+    let log =
+        fs::File::create(format!("vol-s3-{}.log", test_id)).expect("Failed to create log file");
     let log_err = log.try_clone().expect("Failed to clone log file");
     cmd.stdout(Stdio::from(log));
     cmd.stderr(Stdio::from(log_err));
-    cmd.spawn().expect("Failed to launch minikv-volume server")
+
+    (
+        cmd.spawn().expect("Failed to launch minikv-volume server"),
+        vol_data,
+        vol_wal,
+    )
 }
 
 async fn wait_for_endpoint(childs: &mut [&mut Child], url: &str) {
@@ -98,17 +151,29 @@ async fn wait_for_endpoint(childs: &mut [&mut Child], url: &str) {
 
 #[tokio::test]
 async fn test_s3_put_get() {
-    if std::env::var("CARGO_BIN_EXE_minikv-coord").is_err() {
-        eprintln!("Skipping test_s3_put_get: CARGO_BIN_EXE_minikv-coord not set");
+    if resolve_bin(&["CARGO_BIN_EXE_minikv-coord", "CARGO_BIN_EXE_minikv_coord"]).is_none()
+        || resolve_bin(&["CARGO_BIN_EXE_minikv-volume", "CARGO_BIN_EXE_minikv_volume"]).is_none()
+    {
+        eprintln!("Skipping test_s3_put_get: required binary env vars are not set");
         return;
     }
+
+    let test_id = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+    );
+
     let coord_http = get_free_port();
     let coord_grpc = get_free_port();
     let vol_http = get_free_port();
     let vol_grpc = get_free_port();
 
-    let mut coord = start_coord(coord_http, coord_grpc);
-    let mut volume = start_volume(vol_http, vol_grpc, coord_http);
+    let (mut coord, coord_data, config_path) = start_coord(coord_http, coord_grpc, &test_id);
+    let (mut volume, vol_data, vol_wal) = start_volume(vol_http, vol_grpc, coord_http, &test_id);
 
     let s3_url = format!("http://127.0.0.1:{}/s3/testbucket/hello.txt", coord_http);
     wait_for_endpoint(&mut [&mut coord, &mut volume], &s3_url).await;
@@ -131,4 +196,11 @@ async fn test_s3_put_get() {
     let _ = coord.wait();
     let _ = volume.kill();
     let _ = volume.wait();
+
+    let _ = fs::remove_file(config_path);
+    let _ = fs::remove_file(format!("coord-s3-{}.log", test_id));
+    let _ = fs::remove_file(format!("vol-s3-{}.log", test_id));
+    let _ = fs::remove_dir_all(coord_data);
+    let _ = fs::remove_dir_all(vol_data);
+    let _ = fs::remove_dir_all(vol_wal);
 }
