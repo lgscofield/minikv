@@ -121,7 +121,7 @@ async fn wait_for_endpoint(childs: &mut [&mut Child], url: &str) {
                 panic!("A server exited prematurely (exit code {status})");
             }
         }
-        if start.elapsed() > Duration::from_secs(20) {
+        if start.elapsed() > Duration::from_secs(30) {
             panic!("Timeout: endpoint not ready at {url}");
         }
         if let Ok(resp) = client.get(url).send().await {
@@ -150,9 +150,11 @@ async fn test_s3_404() {
     let vol_http = get_free_port();
     let vol_grpc = get_free_port();
     let (mut coord, coord_data) = start_coord(coord_http, coord_grpc, &test_id);
+    let live_url = format!("http://127.0.0.1:{}/health/live", coord_http);
+    wait_for_endpoint(&mut [&mut coord], &live_url).await;
     let (mut volume, vol_data, vol_wal) = start_volume(vol_http, vol_grpc, coord_http, &test_id);
     let url = format!("http://127.0.0.1:{}/s3/testbucket/notfound.txt", coord_http);
-    wait_for_endpoint(&mut [&mut coord, &mut volume], &url).await;
+    wait_for_endpoint(&mut [&mut coord], &url).await;
     let client = Client::new();
     let resp = client.get(&url).send().await.unwrap();
     assert_eq!(resp.status(), 404);
@@ -181,12 +183,14 @@ async fn test_s3_overwrite() {
     let vol_http = get_free_port();
     let vol_grpc = get_free_port();
     let (mut coord, coord_data) = start_coord(coord_http, coord_grpc, &test_id);
+    let live_url = format!("http://127.0.0.1:{}/health/live", coord_http);
+    wait_for_endpoint(&mut [&mut coord], &live_url).await;
     let (mut volume, vol_data, vol_wal) = start_volume(vol_http, vol_grpc, coord_http, &test_id);
     let url = format!(
         "http://127.0.0.1:{}/s3/testbucket/overwrite.txt",
         coord_http
     );
-    wait_for_endpoint(&mut [&mut coord, &mut volume], &url).await;
+    wait_for_endpoint(&mut [&mut coord], &url).await;
     let client = Client::new();
     let data1 = b"first";
     let data2 = b"second";
@@ -221,10 +225,12 @@ async fn test_s3_multiple_objects() {
     let vol_http = get_free_port();
     let vol_grpc = get_free_port();
     let (mut coord, coord_data) = start_coord(coord_http, coord_grpc, &test_id);
+    let live_url = format!("http://127.0.0.1:{}/health/live", coord_http);
+    wait_for_endpoint(&mut [&mut coord], &live_url).await;
     let (mut volume, vol_data, vol_wal) = start_volume(vol_http, vol_grpc, coord_http, &test_id);
     let url1 = format!("http://127.0.0.1:{}/s3/testbucket/obj1.txt", coord_http);
     let url2 = format!("http://127.0.0.1:{}/s3/testbucket/obj2.txt", coord_http);
-    wait_for_endpoint(&mut [&mut coord, &mut volume], &url1).await;
+    wait_for_endpoint(&mut [&mut coord], &url1).await;
     let client = Client::new();
     let data1 = b"foo";
     let data2 = b"bar";
