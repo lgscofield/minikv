@@ -15,29 +15,22 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Start coordinator server
     Serve {
-        /// Node ID
         #[arg(long)]
         id: String,
 
-        /// Bind address for HTTP
         #[arg(long, default_value = "0.0.0.0:8000")]
         bind: String,
 
-        /// Bind address for gRPC
         #[arg(long, default_value = "0.0.0.0:8001")]
         grpc: String,
 
-        /// Database directory
         #[arg(long, default_value = "./coord-data")]
         db: PathBuf,
 
-        /// Raft peers (comma-separated)
         #[arg(long, value_delimiter = ',')]
         peers: Vec<String>,
 
-        /// Replication factor
         #[arg(long, default_value = "3")]
         replicas: usize,
     },
@@ -63,9 +56,7 @@ async fn main() -> anyhow::Result<()> {
             peers,
             replicas,
         } => {
-            // Load config from file, then override with CLI arguments
             let config = minikv::common::config::Config::load();
-            // Override fields if provided via CLI
             let bind_addr = bind.parse()?;
             let grpc_addr = grpc.parse()?;
             let db_path = db;
@@ -77,7 +68,6 @@ async fn main() -> anyhow::Result<()> {
                 replicas,
                 ..Default::default()
             };
-            // If file config exists, merge it (CLI has priority)
             if let Some(file_conf) = config.coordinator {
                 let bind_addr = file_conf.bind_addr;
                 let grpc_addr = file_conf.grpc_addr;
@@ -99,7 +89,6 @@ async fn main() -> anyhow::Result<()> {
                 if replicas != 3 {
                     coord_config.replicas = replicas;
                 }
-                // ... other fields if needed
             }
             let coord = Coordinator::new(coord_config, id);
             coord.serve().await?;

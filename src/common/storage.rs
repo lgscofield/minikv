@@ -3,7 +3,6 @@ impl Default for MemStore {
         Self::new()
     }
 }
-/// Persistent and in-memory storage abstraction for MiniKV
 ///
 /// Supports in-memory, RocksDB, and Sled backends. Used for S3/data paths.
 use std::collections::HashMap;
@@ -14,14 +13,12 @@ use rocksdb::{Options, DB};
 #[cfg(feature = "sled")]
 use sled;
 
-/// Trait for key-value storage backends
 pub trait KVStore: Send + Sync {
     fn get(&self, key: &str) -> Option<Vec<u8>>;
     fn put(&self, key: &str, value: Vec<u8>);
     fn delete(&self, key: &str);
 }
 
-/// In-memory store (default)
 pub struct MemStore {
     map: Mutex<HashMap<String, Vec<u8>>>,
 }
@@ -46,7 +43,6 @@ impl KVStore for MemStore {
     }
 }
 
-/// RocksDB store
 #[cfg(feature = "rocksdb")]
 pub struct RocksStore {
     db: DB,
@@ -75,7 +71,6 @@ impl KVStore for RocksStore {
     }
 }
 
-/// Sled store
 #[cfg(feature = "sled")]
 pub struct SledStore {
     db: sled::Db,
@@ -102,7 +97,6 @@ impl KVStore for SledStore {
     }
 }
 
-/// Global storage instance
 pub struct Storage {
     backend: Arc<dyn KVStore>,
 }

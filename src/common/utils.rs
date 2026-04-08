@@ -13,12 +13,10 @@ const KEY_ENCODE_SET: &AsciiSet = &CONTROLS
     .add(b'#')
     .add(b'&');
 
-/// Encode a key for URL/filesystem usage
 pub fn encode_key(key: &str) -> String {
     utf8_percent_encode(key, KEY_ENCODE_SET).to_string()
 }
 
-/// Decode a percent-encoded key
 #[allow(clippy::result_large_err)]
 pub fn decode_key(encoded: &str) -> crate::Result<String> {
     percent_decode_str(encoded)
@@ -27,7 +25,6 @@ pub fn decode_key(encoded: &str) -> crate::Result<String> {
         .map_err(|e| crate::Error::Other(format!("Failed to decode key: {}", e)))
 }
 
-/// Format bytes as human-readable string
 pub fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB", "PB"];
     let mut size = bytes as f64;
@@ -77,7 +74,6 @@ pub fn parse_duration(s: &str) -> crate::Result<std::time::Duration> {
     Ok(duration)
 }
 
-/// Get current Unix timestamp (seconds)
 pub fn timestamp_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -85,7 +81,6 @@ pub fn timestamp_now() -> u64 {
         .as_secs()
 }
 
-/// Get current Unix timestamp (milliseconds)
 pub fn timestamp_now_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -93,7 +88,6 @@ pub fn timestamp_now_millis() -> u64 {
         .as_millis() as u64
 }
 
-/// Node health state
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum NodeState {
@@ -128,7 +122,6 @@ impl std::fmt::Display for NodeState {
     }
 }
 
-/// Retry with exponential backoff
 pub async fn retry_with_backoff<F, Fut, T>(
     mut f: F,
     max_retries: usize,
@@ -160,7 +153,6 @@ where
     Err(crate::Error::Internal("Max retries exceeded".into()))
 }
 
-/// Generate a unique upload ID for 2PC
 pub fn generate_upload_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -170,12 +162,10 @@ pub fn generate_upload_id() -> String {
     format!("{}-{}", timestamp, counter)
 }
 
-/// Calculate CRC32 checksum
 pub fn crc32(data: &[u8]) -> u32 {
     crc32fast::hash(data)
 }
 
-/// Validate key (must be non-empty, reasonable length)
 #[allow(clippy::result_large_err)]
 pub fn validate_key(key: &str) -> crate::Result<()> {
     if key.is_empty() {

@@ -13,7 +13,7 @@ echo ""
 
 # Check coordinator health
 echo "Checking coordinator..."
-if ! curl -sf "${COORDINATOR}/health" > /dev/null; then
+if ! curl -sf "${COORDINATOR}/health/live" > /dev/null; then
     echo "[FAIL] Coordinator unreachable"
     exit 1
 fi

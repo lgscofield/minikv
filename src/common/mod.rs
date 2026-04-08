@@ -1,7 +1,6 @@
 pub mod storage;
 pub use storage::{KVStore, MemStore, Storage};
 pub mod audit;
-/// Common utilities and types shared across minikv
 pub mod auth;
 pub mod auth_middleware;
 pub mod config;
@@ -15,26 +14,17 @@ pub mod ratelimit;
 pub mod tracing_middleware;
 pub mod utils;
 
-// v0.8.0 modules
 pub mod admin_ui;
 pub mod backup;
 pub mod cdc;
 pub mod plugin;
 pub mod replication;
 
-// v0.9.0 modules
 pub mod geo;
 pub mod io_uring;
 pub mod k8s_operator;
-/// Data tiering (hot/warm/cold/archive)
 pub mod tiering;
-/// Time-series engine (multiple resolutions, compression, aggregation)
 pub mod timeseries;
-// Removed schema module and its re-exports
-// pub mod schema;
-// pub use schema::{
-//     get_schema_registry, init_schema, Schema, SchemaConfig, SchemaRegistry, SchemaVersion,
-// };
 pub use auth_middleware::{
     auth_middleware, get_tenant_from_request, is_admin_request, require_admin_middleware,
     require_write_middleware, AuthExtension, AuthState,
@@ -61,7 +51,6 @@ pub use utils::{
 
 pub use audit::{AuditEntry, AuditEventType, AuditLogger, AUDIT_LOGGER};
 
-// v0.8.0 re-exports
 pub use admin_ui::{admin_dashboard, create_admin_ui_router, DashboardStats};
 pub use backup::{
     init_backup, BackupConfig, BackupDestination, BackupManager, BackupManifest, BackupProgress,
@@ -80,7 +69,6 @@ pub use replication::{
     REPLICATION_MANAGER,
 };
 
-// v0.9.0 re-exports
 pub use geo::{GeoConfig, GeoLocation, GeoRouter, RegionConfig, RoutingStrategy};
 pub use io_uring::{IoUring, IoUringConfig, IoUringStats};
 pub use k8s_operator::{MiniKVClusterSpec, MiniKVController};

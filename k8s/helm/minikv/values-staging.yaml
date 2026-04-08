@@ -1,0 +1,9 @@
+coordinator:
+  replicaCount: 3
+  image:
+    tag: staging
+
+volume:
+  replicaCount: 3
+  image:
+    tag: staging

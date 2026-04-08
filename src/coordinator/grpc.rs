@@ -1,9 +1,6 @@
 //! Coordinator gRPC service (internal)
 //!
 //! This module exposes the internal gRPC API for cluster coordination.
-//! Security features (TLS, authentication) and cross-datacenter replication are planned for future releases.
-//!
-//! This module implements the internal gRPC protocol for cluster coordination.
 //! Used for Raft consensus, metadata replication, and distributed operations between nodes.
 
 use crate::proto::coordinator_internal_server::{CoordinatorInternal, CoordinatorInternalServer};
@@ -24,7 +21,6 @@ impl CoordGrpcService {
         Self {}
     }
 
-    /// Converts this service into a gRPC server instance.
     pub fn into_server(self) -> CoordinatorInternalServer<Self> {
         CoordinatorInternalServer::new(self)
     }
@@ -36,7 +32,6 @@ impl CoordinatorInternal for CoordGrpcService {
         &self,
         req: Request<crate::proto::RangeRequest>,
     ) -> Result<Response<crate::proto::RangeResponse>, Status> {
-        // Access MetadataStore (singleton/global or via a global Arc<...>)
         let store = crate::coordinator::metadata::get_global_store();
         let params = req.into_inner();
         let keys = match store.list_keys() {
@@ -110,7 +105,6 @@ impl CoordinatorInternal for CoordGrpcService {
         let resp = crate::proto::BatchResponse { results };
         Ok(Response::new(resp))
     }
-    /// Handles Raft vote requests from other nodes.
     async fn request_vote(
         &self,
         req: Request<VoteRequest>,
@@ -150,7 +144,6 @@ impl CoordinatorInternal for CoordGrpcService {
     }
 
     async fn join(&self, _req: Request<JoinRequest>) -> Result<Response<JoinResponse>, Status> {
-        // Handle volume registration here
         Ok(Response::new(JoinResponse {
             ok: true,
             cluster_id: "cluster-1".to_string(),
@@ -161,7 +154,6 @@ impl CoordinatorInternal for CoordGrpcService {
         &self,
         _req: Request<HeartbeatRequest>,
     ) -> Result<Response<HeartbeatResponse>, Status> {
-        // Update volume state here
         Ok(Response::new(HeartbeatResponse {
             ok: true,
             commands: vec![],

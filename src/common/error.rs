@@ -6,11 +6,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    // === I/O Errors ===
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
-    // === Storage Errors ===
     #[error("Key not found: {0}")]
     NotFound(String),
 
@@ -23,7 +21,6 @@ pub enum Error {
     #[error("WAL error: {0}")]
     Wal(String),
 
-    // === Raft Errors ===
     #[error("Not leader: current leader is {0}")]
     NotLeader(String),
 
@@ -33,14 +30,12 @@ pub enum Error {
     #[error("Consensus timeout")]
     ConsensusTimeout,
 
-    // === 2PC Errors ===
     #[error("Prepare failed on {node}: {reason}")]
     PrepareFailed { node: String, reason: String },
 
     #[error("Commit failed on {node}: {reason}")]
     CommitFailed { node: String, reason: String },
 
-    // === Placement Errors ===
     #[error("No healthy volumes available")]
     NoHealthyVolumes,
 
@@ -50,7 +45,6 @@ pub enum Error {
     #[error("Shard not found: {0}")]
     ShardNotFound(u64),
 
-    // === Network Errors ===
     #[error("gRPC error: {0}")]
     Grpc(#[from] tonic::Status),
 
@@ -60,18 +54,15 @@ pub enum Error {
     #[error("Connection failed: {0}")]
     ConnectionFailed(String),
 
-    // === Metadata Errors ===
     #[error("RocksDB error: {0}")]
     RocksDb(#[from] rocksdb::Error),
 
     #[error("Metadata corrupted: {0}")]
     MetadataCorrupted(String),
 
-    // === Config Errors ===
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
 
-    // === Ops Errors ===
     #[error("Verify failed: {0}")]
     VerifyFailed(String),
 
@@ -81,7 +72,6 @@ pub enum Error {
     #[error("Compact failed: {0}")]
     CompactFailed(String),
 
-    // === Generic ===
     #[error("Internal error: {0}")]
     Internal(String),
 
@@ -105,7 +95,6 @@ impl Error {
         )
     }
 
-    /// Convert to gRPC status for RPC responses
     pub fn to_grpc_status(&self) -> tonic::Status {
         use tonic::Code;
         match self {
@@ -128,7 +117,6 @@ impl Error {
         }
     }
 
-    /// Convert to HTTP status code
     pub fn to_http_status(&self) -> axum::http::StatusCode {
         use axum::http::StatusCode;
         match self {
@@ -144,7 +132,6 @@ impl Error {
     }
 }
 
-// Implement From for common error types
 impl From<&str> for Error {
     fn from(s: &str) -> Self {
         Error::Other(s.to_string())

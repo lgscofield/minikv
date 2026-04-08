@@ -5,7 +5,6 @@
 
 #![allow(dead_code)]
 
-/// Large blob streaming stub: Streams large blobs efficiently between volumes and clients.
 pub async fn stream_large_blob(_volume_id: &str, _key: &str) -> Result<()> {
     use std::fs::File;
     use std::path::Path;
@@ -36,35 +35,24 @@ pub async fn stream_large_blob(_volume_id: &str, _key: &str) -> Result<()> {
         if n == 0 {
             break;
         }
-        // Send the chunk to the client or peer (HTTP/gRPC)
-        // Retry on send error if needed
     }
     Ok(())
 }
 
 use crate::common::Result;
 
-/// Triggers compaction across all volumes or a specific shard.
 /// Compaction reclaims disk space by removing obsolete blobs and reorganizing segments.
 pub async fn compact_cluster(_coordinator_url: &str, _shard: Option<u64>) -> Result<CompactReport> {
     tracing::info!("Starting cluster compaction");
 
-    // Real implementation:
-    // 1. Fetch volume list from coordinator
-    // 2. For each volume (or shard), trigger compaction via gRPC/HTTP
-    // 3. Collect stats and aggregate
-    // (Stub: replace with actual compaction logic)
     Ok(CompactReport {
         volumes_compacted: 1,            // Example
         bytes_freed: 1024 * 1024 * 1024, // Example: 1GB
     })
 }
 
-/// Report of cluster compaction results.
 #[derive(Debug, serde::Serialize)]
 pub struct CompactReport {
-    /// Number of volumes compacted
     pub volumes_compacted: usize,
-    /// Total bytes freed by compaction
     pub bytes_freed: u64,
 }

@@ -1,437 +1,223 @@
-# Professional Test Scenarios – minikv v0.9.0 (Current Release)
+# Professional Test Scenarios - minikv v1.0.0
 
-This document describes manual test scenarios to validate the robustness, resilience, consistency, and new features of the minikv cluster. Each scenario includes context, detailed steps, commands to execute, verification points, and success criteria.
+This document defines manual validation scenarios for minikv v1.0.0.
+Each scenario includes context, steps, and success criteria.
 
----
+## 0. Kubernetes Operator and Cloud-Native Deployment
 
-## 0. Kubernetes Operator & Cloud-Native
+Context: Validate CRD lifecycle, reconciliation, RBAC, StatefulSet behavior, and scaling.
 
-**Context:** Validate CRD, autoscaling, RBAC, StatefulSet, ConfigMap, ServiceMonitor, and deployment manifests.
+Steps:
+1. Deploy CRD and operator manifests.
+2. Apply basic and production cluster examples.
+3. Verify StatefulSet, Services, ConfigMaps, RBAC, and monitoring resources.
+4. Scale up and down.
+5. Delete and recreate the cluster resource.
 
-**Steps:**
-1. Deploy MiniKVCluster CRD and operator.
-2. Apply basic-cluster.yaml and production-cluster.yaml.
-3. Check resources (StatefulSet, ConfigMap, ServiceMonitor, RBAC).
-4. Scale up/down via autoscaling.
-5. Delete and recreate cluster.
-
-**Success Criteria:**
-- All resources are created and managed correctly.
-- Autoscaling works as expected.
-- RBAC permissions enforced.
-- Cluster recovers after deletion/recreation.
-
----
+Success criteria:
+- Resources are created and reconciled correctly.
+- Scaling works without orphaned resources.
+- RBAC is enforced.
+- Cluster returns to healthy state after recreation.
 
 ## 1. Time-Series Engine
 
-**Context:** Validate /ts/write and /ts/query endpoints, compression, downsampling, aggregation, retention.
+Context: Validate ingest and query workflows.
 
-**Steps:**
-1. Start cluster with time-series enabled.
-2. Write time-series data via /ts/write.
-3. Query data with different resolutions and aggregations via /ts/query.
-4. Check retention and downsampling.
+Steps:
+1. Start coordinator and volumes.
+2. Write samples with `POST /ts/write`.
+3. Query with `POST /ts/query` using filters and time windows.
+4. Verify aggregation behavior.
 
-**Success Criteria:**
-- Data is written, queried, aggregated, and downsampled correctly.
-- Retention policy enforced.
-- Compression active.
+Success criteria:
+- Samples are persisted and queryable.
+- Aggregation and filters return expected results.
 
----
+## 2. Vector Similarity Search
 
-## 2. Geo-Partitioning
+Context: Validate vector indexing and nearest-neighbor retrieval.
 
-**Context:** Test region-aware routing, geo-fencing, failover, compliance.
+Steps:
+1. Upsert vectors with `POST /vector/upsert`.
+2. Query neighbors with `POST /vector/query`.
+3. Check index stats with `GET /admin/vector/stats`.
+4. Restart coordinator and verify results again.
 
-**Steps:**
-1. Configure multiple regions in cluster spec.
-2. Perform reads/writes with different routing strategies (latency, geo, round-robin, primary).
-3. Simulate region failure and verify failover.
-4. Test geo-fencing rules.
+Success criteria:
+- Upserted vectors are returned by similarity queries.
+- `top_k` behavior is respected.
+- Index remains usable after restart.
 
-**Success Criteria:**
-- Requests are routed according to strategy.
-- Failover works between regions.
-- Geo-fencing and compliance enforced.
+## 3. Geo-Partitioning
 
----
+Context: Validate routing across regions.
 
-## 3. Data Tiering
+Steps:
+1. Configure multiple regions.
+2. Test latency, geo, round-robin, and primary routing strategies.
+3. Simulate a regional outage and verify fallback.
+4. Validate geo-fencing where configured.
 
-**Context:** Validate automatic movement between hot/warm/cold/archive, tiering policies, compression, S3 archive.
+Success criteria:
+- Requests follow configured strategy.
+- Failover is deterministic and safe.
+- Geo-fencing rules are respected.
 
-**Steps:**
-1. Start cluster with tiering enabled.
-2. Insert data with varying access patterns, sizes, and ages.
-3. Observe tier changes and compression.
-4. Test S3 archive tier.
+## 4. Data Tiering
 
-**Success Criteria:**
-- Data moves between tiers as per policy.
-- Compression applied per tier.
-- S3 archive stores and retrieves data.
+Context: Validate movement across hot, warm, cold, and archive tiers.
 
----
+Steps:
+1. Start with tiering enabled.
+2. Insert data with varied access patterns.
+3. Trigger or wait for policy evaluation.
+4. Verify tier transitions and reads.
 
-## 4. io_uring Performance Mode (Linux)
+Success criteria:
+- Tier transitions follow policy.
+- Data remains readable after movement.
 
-**Context:** Validate io_uring mode, zero-copy, batching, fallback.
+## 5. io_uring Mode (Linux)
 
-**Steps:**
-1. Start cluster on Linux with io_uring enabled.
-2. Perform high-throughput read/write operations.
-3. Check metrics for batching and zero-copy.
-4. Disable io_uring and verify fallback to standard I/O.
+Context: Validate io_uring path and fallback behavior.
 
-**Success Criteria:**
-- io_uring mode is active and improves performance.
-- Fallback works if not supported.
+Steps:
+1. Run on Linux with io_uring enabled.
+2. Execute sustained read/write load.
+3. Observe batching and throughput metrics.
+4. Disable io_uring and verify fallback.
 
----
+Success criteria:
+- io_uring is active when available.
+- Service remains functional on fallback.
 
-## 5. Node Failure
+## 6. Node Failure
 
-**Context:** A volume or the coordinator crashes unexpectedly.
+Context: Validate availability during a volume outage.
 
-**Steps:**
-1. Start a full cluster (coordinator + 3 volumes).
-2. Insert 1000 keys distributed across all volumes.
-3. Forcefully stop a volume (`docker stop minikv-volume-1`).
-4. Check cluster availability via `/health` and `/metrics`.
-5. Read keys (including some on the stopped volume).
-6. Restart the volume (`docker start minikv-volume-1`).
-7. Verify automatic recovery and data synchronization.
+Steps:
+1. Start cluster (coordinator + 3 volumes).
+2. Insert dataset.
+3. Stop one volume.
+4. Check `GET /health/live`, `GET /health/ready`, and `GET /metrics`.
+5. Run reads and writes.
+6. Restart failed volume.
 
-**Success Criteria:**
-- The cluster remains available (read/write on other volumes).
-- Keys on the stopped volume are inaccessible during the outage, but recover after restart.
-- Metrics reflect the volume state (down/up).
+Success criteria:
+- Cluster remains available with degraded capacity.
+- Recovered volume rejoins and catches up.
 
----
+## 7. Split-Brain Resistance
 
-## 6. Split-brain
+Context: Validate consistency under network partition.
 
-**Context:** Network partition between two groups of nodes.
+Steps:
+1. Start cluster.
+2. Partition connectivity between node groups.
+3. Execute reads and writes in both partitions.
+4. Observe leadership and replication.
+5. Heal partition and validate convergence.
 
-**Steps:**
-1. Start the cluster.
-2. Simulate a network partition (iptables or docker network disconnect) between the coordinator and one volume.
-3. Attempt writes and reads on all volumes.
-4. Observe Raft role (leader/follower) and replication.
-5. Repair the partition.
-6. Verify data convergence and Raft log consistency.
+Success criteria:
+- Single-leader safety is preserved.
+- Cluster converges after healing.
 
-**Success Criteria:**
-- No persistent split-brain (only one leader, no data divergence).
-- Writes to the isolated volume are rejected or queued.
-- After repair, the volume catches up with the log and data is consistent.
+## 8. Recovery After Failure
 
----
+Context: Validate restart recovery for coordinator and volumes.
 
-## 7. Recovery After Failure
+Steps:
+1. Insert data.
+2. Stop coordinator.
+3. Validate expected client impact.
+4. Restart coordinator.
+5. Re-validate reads and writes.
 
-**Context:** Coordinator or volume crash, then restart.
+Success criteria:
+- Services recover cleanly.
+- Data remains intact.
 
-**Steps:**
-1. Start the cluster, insert data.
-2. Stop the coordinator (`docker stop minikv-coordinator`).
-3. Attempt reads/writes (should fail).
-4. Restart the coordinator.
-5. Verify service recovery and data consistency.
+## 9. Stress and Load
 
-**Success Criteria:**
-- The coordinator resumes its leader or follower role.
-- Data is intact and accessible.
-- Metrics reflect recovery.
+Context: Validate sustained load behavior.
 
----
+Steps:
+1. Start cluster.
+2. Run `bench/run_all.sh`.
+3. Observe latency, throughput, and errors in `GET /metrics`.
+4. Confirm no crash loops.
 
-## 8. Stress Test (High Load)
+Success criteria:
+- Cluster handles target load without instability.
 
-**Context:** High read/write load on the cluster.
+## 10. Consistency Verification
 
-**Steps:**
-1. Start the cluster.
-2. Run the script `bench/run_all.sh` to generate high load.
-3. Monitor `/metrics` for lag, latency, throughput.
-4. Check for absence of errors or timeouts.
+Context: Validate replicated state after mixed operations.
 
-**Success Criteria:**
-- The cluster sustains the load without crashing.
-- Metrics show expected throughput and latency.
-- No data or operation loss.
+Steps:
+1. Insert deterministic key-value sets.
+2. Execute update and delete operations.
+3. Compare observed state across nodes.
+4. Verify Raft replication alignment.
 
----
+Success criteria:
+- Final values are consistent across replicas.
 
-## 9. Consistency Verification
+## 11. Compaction and Repair Safety
 
-**Context:** Ensure all keys are replicated and consistent after operations.
+Context: Validate admin operations under live traffic.
 
-**Steps:**
-1. Insert keys with known values.
-2. Read all keys on each volume (via API or CLI).
-3. Compare values and Raft logs.
+Steps:
+1. Populate dataset.
+2. Run `POST /admin/compact`.
+3. Run `POST /admin/repair`.
+4. Validate availability and data consistency.
 
-**Success Criteria:**
-- All keys are present and identical on each volume.
-- Raft logs are synchronized.
+Success criteria:
+- No data loss.
+- Cluster remains operational.
 
----
+## 12. Audit Logging
 
-## 10. Recovery After Compaction/Repair
+Context: Validate traceability of sensitive actions.
 
-**Context:** Force a compaction or repair, then verify recovery.
+Steps:
+1. Ensure audit logging is enabled.
+2. Perform admin actions and data operations.
+3. Inspect audit outputs.
 
-**Steps:**
-1. Start the cluster, insert data.
-2. Call `/admin/compact` and `/admin/repair`.
-3. Check availability and data consistency after each operation.
+Success criteria:
+- Sensitive actions are recorded with actor, target, and timestamp.
 
-**Success Criteria:**
-- The cluster remains available during and after the operation.
-- Data is compacted/repaired with no loss.
+## 13. Persistent Storage Backends
 
----
+Context: Validate durability with RocksDB or Sled.
 
-## 11. Audit Logging
+Steps:
+1. Configure backend.
+2. Insert data.
+3. Restart services.
+4. Re-validate data access.
 
-**Context:** All admin and sensitive actions are logged for compliance and traceability.
+Success criteria:
+- Data survives restart with no corruption.
 
-**Steps:**
-1. Start the cluster with audit logging enabled (default).
-2. Perform admin actions (create/revoke/delete API keys, change quotas, etc.).
-3. Perform S3/data operations (PUT, GET, DELETE).
-4. Download or view the audit log file and stdout output.
+## 14. Watch and Subscribe Notifications
 
-**Success Criteria:**
-- All admin and data modification actions are logged with correct event type, actor, and details.
-- Audit log file and stdout output are consistent and complete.
+Context: Validate real-time change propagation.
 
----
+Steps:
+1. Open WebSocket (`/watch/ws`) and SSE (`/watch/sse`) subscriptions.
+2. Trigger put/delete operations.
+3. Validate payload format and ordering.
 
-## 12. Persistent Storage Backend
+Success criteria:
+- Subscribers receive expected events promptly.
+- No systematic duplicates or missed events.
 
-**Context:** Data is stored in RocksDB or Sled instead of in-memory.
+## Execution Notes
 
-**Steps:**
-1. Configure the cluster to use RocksDB or Sled backend in config.toml.
-2. Start the cluster and insert data via S3 API.
-3. Stop and restart the cluster.
-4. Verify data persists across restarts.
-
-**Success Criteria:**
-- Data is durable and survives process restarts.
-- No data loss or corruption.
-
----
-
-## 13. Watch/Subscribe System
-
-**Context:** Clients can subscribe to key or prefix changes and receive real-time notifications.
-
-**Steps:**
-1. Start the cluster with watch/subscribe enabled.
-2. Open a WebSocket or SSE connection to `/admin/subscribe` or similar endpoint.
-3. Perform key changes (PUT, DELETE) on subscribed keys/prefixes.
-4. Observe notifications received by the client.
-
-**Success Criteria:**
-- Clients receive timely and accurate notifications for all relevant key changes.
-- No missed or duplicate events.
-
----
-
-## 14. Real-time Watch/Subscribe Notifications
-
-**Context:** Clients subscribe to key change events via WebSocket or SSE endpoints.
-
-**Steps:**
-1. Start the cluster (coordinator + volumes).
-2. Open a WebSocket connection to `/watch/ws` or an SSE connection to `/watch/sse`.
-3. Perform PUT, DELETE, and REVOKE operations via the API.
-4. Observe the events received by the client (should include event type, key, tenant, timestamp).
-
-**Success Criteria:**
-- Each key change triggers a real-time event to all subscribers.
-- Events are correctly formatted and delivered via both WebSocket and SSE.
-- No missed or duplicate events for single operations.
-
----
-
-> These scenarios should be executed manually, with result logging and metrics capture for each step. They guarantee professional-grade validation for minikv v0.9.0.
-
-This document describes manual test scenarios to validate the robustness, resilience, and consistency of the minikv cluster. Each scenario includes context, detailed steps, commands to execute, verification points, and success criteria.
-
----
-
-## 1. Node Failure
-
-**Context:** A volume or the coordinator crashes unexpectedly.
-
-**Steps:**
-1. Start a full cluster (coordinator + 3 volumes).
-2. Insert 1000 keys distributed across all volumes.
-3. Forcefully stop a volume (`docker stop minikv-volume-1`).
-4. Check cluster availability via `/health` and `/metrics`.
-5. Read keys (including some on the stopped volume).
-6. Restart the volume (`docker start minikv-volume-1`).
-7. Verify automatic recovery and data synchronization.
-
-**Success Criteria:**
-- The cluster remains available (read/write on other volumes).
-- Keys on the stopped volume are inaccessible during the outage, but recover after restart.
-- Metrics reflect the volume state (down/up).
-
----
-
-## 2. Split-brain
-
-**Context:** Network partition between two groups of nodes.
-
-**Steps:**
-1. Start the cluster.
-2. Simulate a network partition (iptables or docker network disconnect) between the coordinator and one volume.
-3. Attempt writes and reads on all volumes.
-4. Observe Raft role (leader/follower) and replication.
-5. Repair the partition.
-6. Verify data convergence and Raft log consistency.
-
-**Success Criteria:**
-- No persistent split-brain (only one leader, no data divergence).
-- Writes to the isolated volume are rejected or queued.
-- After repair, the volume catches up with the log and data is consistent.
-
----
-
-## 3. Recovery After Failure
-
-**Context:** Coordinator or volume crash, then restart.
-
-**Steps:**
-1. Start the cluster, insert data.
-2. Stop the coordinator (`docker stop minikv-coordinator`).
-3. Attempt reads/writes (should fail).
-4. Restart the coordinator.
-5. Verify service recovery and data consistency.
-
-**Success Criteria:**
-- The coordinator resumes its leader or follower role.
-- Data is intact and accessible.
-- Metrics reflect recovery.
-
----
-
-## 4. Stress Test (High Load)
-
-**Context:** High read/write load on the cluster.
-
-**Steps:**
-1. Start the cluster.
-2. Run the script `bench/run_all.sh` to generate high load.
-3. Monitor `/metrics` for lag, latency, throughput.
-4. Check for absence of errors or timeouts.
-
-**Success Criteria:**
-- The cluster sustains the load without crashing.
-- Metrics show expected throughput and latency.
-- No data or operation loss.
-
----
-
-## 5. Consistency Verification
-
-**Context:** Ensure all keys are replicated and consistent after operations.
-
-**Steps:**
-1. Insert keys with known values.
-2. Read all keys on each volume (via API or CLI).
-3. Compare values and Raft logs.
-
-**Success Criteria:**
-- All keys are present and identical on each volume.
-- Raft logs are synchronized.
-
----
-
-## 6. Recovery After Compaction/Repair
-
-**Context:** Force a compaction or repair, then verify recovery.
-
-**Steps:**
-1. Start the cluster, insert data.
-2. Call `/admin/compact` and `/admin/repair`.
-3. Check availability and data consistency after each operation.
-
-**Success Criteria:**
-- The cluster remains available during and after the operation.
-- Data is compacted/repaired with no loss.
-
----
-
-## 7. Audit Logging
-
-**Context:** All admin and sensitive actions are logged for compliance and traceability.
-
-**Steps:**
-1. Start the cluster with audit logging enabled (default).
-2. Perform admin actions (create/revoke/delete API keys, change quotas, etc.).
-3. Perform S3/data operations (PUT, GET, DELETE).
-4. Download or view the audit log file and stdout output.
-
-**Success Criteria:**
-- All admin and data modification actions are logged with correct event type, actor, and details.
-- Audit log file and stdout output are consistent and complete.
-
----
-
-## 8. Persistent Storage Backend
-
-**Context:** Data is stored in RocksDB or Sled instead of in-memory.
-
-**Steps:**
-1. Configure the cluster to use RocksDB or Sled backend in config.toml.
-2. Start the cluster and insert data via S3 API.
-3. Stop and restart the cluster.
-4. Verify data persists across restarts.
-
-**Success Criteria:**
-- Data is durable and survives process restarts.
-- No data loss or corruption.
-
----
-
-## 9. Watch/Subscribe System
-
-**Context:** Clients can subscribe to key or prefix changes and receive real-time notifications.
-
-**Steps:**
-1. Start the cluster with watch/subscribe enabled.
-2. Open a WebSocket or SSE connection to `/admin/subscribe` or similar endpoint.
-3. Perform key changes (PUT, DELETE) on subscribed keys/prefixes.
-4. Observe notifications received by the client.
-
-**Success Criteria:**
-- Clients receive timely and accurate notifications for all relevant key changes.
-- No missed or duplicate events.
-
----
-
-## 10. Real-time Watch/Subscribe Notifications
-
-**Context:** Clients subscribe to key change events via WebSocket or SSE endpoints.
-
-**Steps:**
-1. Start the cluster (coordinator + volumes).
-2. Open a WebSocket connection to `/watch/ws` or an SSE connection to `/watch/sse`.
-3. Perform PUT, DELETE, and REVOKE operations via the API.
-4. Observe the events received by the client (should include event type, key, tenant, timestamp).
-
-**Success Criteria:**
-- Each key change triggers a real-time event to all subscribers.
-- Events are correctly formatted and delivered via both WebSocket and SSE.
-- No missed or duplicate events for single operations.
-
----
-
-> These scenarios should be executed manually, with result logging and metrics capture for each step. They guarantee professional-grade validation for minikv v0.9.0.
+- Record commands, timestamps, and environment.
+- Capture logs and metrics for failures.
+- Store outcomes in `tests/RESULT_TEMPLATE.md`.

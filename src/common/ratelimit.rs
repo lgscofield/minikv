@@ -11,16 +11,11 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// Rate limiter configuration
 #[derive(Debug, Clone)]
 pub struct RateLimitConfig {
-    /// Maximum number of requests in a burst
     pub burst_size: u32,
-    /// Number of requests allowed per second
     pub requests_per_second: f64,
-    /// Time window for rate limit reset
     pub window_duration: Duration,
-    /// Whether to enable rate limiting
     pub enabled: bool,
 }
 
@@ -35,7 +30,6 @@ impl Default for RateLimitConfig {
     }
 }
 
-/// Token bucket for a single client
 #[derive(Debug, Clone)]
 struct TokenBucket {
     tokens: f64,
@@ -65,7 +59,6 @@ impl TokenBucket {
         }
     }
 
-    /// Refill tokens based on elapsed time
     fn refill(&mut self) {
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_refill).as_secs_f64();
@@ -73,12 +66,10 @@ impl TokenBucket {
         self.last_refill = now;
     }
 
-    /// Get remaining tokens (for headers)
     fn remaining(&self) -> u32 {
         self.tokens as u32
     }
 
-    /// Get time until next token is available
     fn retry_after(&self) -> Duration {
         if self.tokens >= 1.0 {
             Duration::ZERO
@@ -89,7 +80,6 @@ impl TokenBucket {
     }
 }
 
-/// Shared rate limiter state
 #[derive(Clone)]
 pub struct RateLimiter {
     buckets: Arc<Mutex<HashMap<String, TokenBucket>>>,
@@ -97,7 +87,6 @@ pub struct RateLimiter {
 }
 
 impl RateLimiter {
-    /// Create a new rate limiter with the given configuration
     pub fn new(config: RateLimitConfig) -> Self {
         Self {
             buckets: Arc::new(Mutex::new(HashMap::new())),
@@ -105,7 +94,6 @@ impl RateLimiter {
         }
     }
 
-    /// Check if a request from the given IP is allowed
     pub fn check(&self, ip: &str) -> RateLimitResult {
         if !self.config.enabled {
             return RateLimitResult::Allowed {
@@ -132,7 +120,6 @@ impl RateLimiter {
         }
     }
 
-    /// Clean up old entries to prevent memory leaks
     pub fn cleanup(&self) {
         let mut buckets = self.buckets.lock().unwrap();
         let now = Instant::now();
@@ -141,7 +128,6 @@ impl RateLimiter {
         });
     }
 
-    /// Get statistics about the rate limiter
     pub fn stats(&self) -> RateLimitStats {
         let buckets = self.buckets.lock().unwrap();
         RateLimitStats {
@@ -151,23 +137,18 @@ impl RateLimiter {
     }
 }
 
-/// Result of a rate limit check
 #[derive(Debug, Clone)]
 pub enum RateLimitResult {
-    /// Request is allowed
     Allowed { remaining: u32, limit: u32 },
-    /// Request is rate limited
     Limited { retry_after: Duration, limit: u32 },
 }
 
-/// Statistics about the rate limiter
 #[derive(Debug, Clone)]
 pub struct RateLimitStats {
     pub tracked_ips: usize,
     pub config: RateLimitConfig,
 }
 
-/// Axum middleware layer for rate limiting
 pub async fn rate_limit_middleware(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     state: axum::extract::State<Arc<RateLimiter>>,
@@ -180,7 +161,6 @@ pub async fn rate_limit_middleware(
         RateLimitResult::Allowed { remaining, limit } => {
             let mut response = next.run(request).await;
 
-            // Add rate limit headers
             let headers = response.headers_mut();
             headers.insert("X-RateLimit-Limit", limit.to_string().parse().unwrap());
             headers.insert(
@@ -215,12 +195,10 @@ mod tests {
     fn test_token_bucket() {
         let mut bucket = TokenBucket::new(10, 1.0);
 
-        // Should allow burst
         for _ in 0..10 {
             assert!(bucket.try_consume());
         }
 
-        // Should be rate limited
         assert!(!bucket.try_consume());
     }
 
@@ -235,7 +213,6 @@ mod tests {
 
         let limiter = RateLimiter::new(config);
 
-        // Should allow burst
         for _ in 0..5 {
             match limiter.check("127.0.0.1") {
                 RateLimitResult::Allowed { .. } => {}
@@ -243,13 +220,11 @@ mod tests {
             }
         }
 
-        // Should be limited
         match limiter.check("127.0.0.1") {
             RateLimitResult::Allowed { .. } => panic!("Should be limited"),
             RateLimitResult::Limited { .. } => {}
         }
 
-        // Different IP should be allowed
         match limiter.check("192.168.1.1") {
             RateLimitResult::Allowed { .. } => {}
             RateLimitResult::Limited { .. } => panic!("Different IP should be allowed"),
@@ -267,7 +242,6 @@ mod tests {
 
         let limiter = RateLimiter::new(config);
 
-        // Should always allow when disabled
         for _ in 0..100 {
             match limiter.check("127.0.0.1") {
                 RateLimitResult::Allowed { .. } => {}

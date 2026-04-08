@@ -1,0 +1,18 @@
+{{- if .Values.volume.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "minikv.fullname" . }}-volume
+  labels:
+    app.kubernetes.io/name: {{ include "minikv.name" . }}
+    app.kubernetes.io/component: volume
+spec:
+  type: {{ .Values.volume.service.type }}
+  selector:
+    app.kubernetes.io/name: {{ include "minikv.name" . }}
+    app.kubernetes.io/component: volume
+  ports:
+    - name: http
+      port: {{ .Values.volume.service.port }}
+      targetPort: http
+{{- end }}

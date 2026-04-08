@@ -1,133 +1,127 @@
-# Professional Test Report Template – minikv v0.9.0 (Current Release)
-# (Updated for v0.9.0: K8s Operator, Time-series, Geo, Tiering, io_uring)
+# Professional Test Report Template - minikv v1.0.0
 
-Use this template to record the results of each manual test scenario. Complete each section during test execution to ensure traceability and reproducibility.
-
----
+Use this template to record results for each manual scenario execution.
+Complete all sections to ensure traceability and reproducibility.
 
 ## General Information
-- **Date:**
-- **Tester:**
-- **Cluster Version:**
-- **Configuration (nodes, volumes, options):**
 
----
+- Date:
+- Tester:
+- Scenario ID and Name:
+- Build/Version (`git rev-parse --short HEAD`):
+- Environment (local, Docker, k8s):
+- Cluster configuration (coordinator, volumes, replicas):
 
-## Scenario Tested
-- **Scenario Name:**
-- **Objective:**
-- **Pre-conditions:**
+## Objective
 
----
+- Objective:
+- Scope:
+- Preconditions:
 
 ## Steps Executed
+
 1. 
 2. 
 3. 
-...
-
----
 
 ## Commands Used
-- 
-- 
-- 
 
----
+```bash
+# Paste exact commands used during execution
+```
 
 ## Verification Points
+
 - 
 - 
 - 
 
----
+## Observed Results
 
-## Results Observed
 - 
 - 
 - 
-
----
 
 ## Metrics and Logs
-- **/metrics extracts:**
-- **Raft logs:**
-- **Other:**
 
----
+- Metrics endpoint sample (`GET /metrics`):
+- Health endpoints (`GET /health/live`, `GET /health/ready`):
+- Coordinator logs:
+- Volume logs:
+- Additional evidence:
 
-## Success Criteria
-- [ ] Success
-- [ ] Failure
-- **Comments:**
+## Scenario Status
 
----
+- [ ] Pass
+- [ ] Fail
+- Notes:
 
-## Screenshots / Evidence
-- (Attach files, screenshots, log extracts)
+## Feature-Specific Checklist
 
----
+### Kubernetes Operator and Cloud-Native
 
+- [ ] CRD applied and recognized
+- [ ] Operator reconciliation successful
+- [ ] StatefulSet, Services, ConfigMaps, RBAC validated
+- [ ] Scaling behavior verified
 
+### Time-Series
 
-## Additional Checks for v0.9.0
+- [ ] `POST /ts/write` validated
+- [ ] `POST /ts/query` validated
+- [ ] Aggregation/filter behavior verified
 
-### Kubernetes Operator & Cloud-Native
-- [ ] MiniKVCluster CRD deployed and recognized
-- [ ] Autoscaling (HPA) functional
-- [ ] RBAC and permissions correct
-- [ ] StatefulSet, ConfigMap, ServiceMonitor created
-- [ ] Deployment via basic-cluster.yaml/production-cluster.yaml successful
+### Vector Search
 
-### Time-Series Engine
-- [ ] /ts/write and /ts/query endpoints functional
-- [ ] Compression, downsampling, aggregations tested
-- [ ] Retention and multiple resolutions verified
+- [ ] `POST /vector/upsert` validated
+- [ ] `POST /vector/query` validated
+- [ ] `GET /admin/vector/stats` validated
+- [ ] Persistence across restart verified
 
 ### Geo-Partitioning
-- [ ] Region-based routing (latency, geo, round-robin, primary) tested
-- [ ] Geo-fencing and compliance (GDPR) verified
-- [ ] Automatic failover between regions
+
+- [ ] Routing strategies validated
+- [ ] Failover validated
+- [ ] Geo-fencing validated (if configured)
 
 ### Data Tiering
-- [ ] Automatic movement between hot/warm/cold/archive
-- [ ] Tiering policies applied (age, access, size)
-- [ ] Per-tier compression and S3 archive tested
+
+- [ ] Tier transitions validated
+- [ ] Readability after movement validated
 
 ### io_uring (Linux)
-- [ ] io_uring mode enabled and detected
-- [ ] Zero-copy and batching operational
-- [ ] Fallback to standard I/O if not supported
 
-### Modules & Integration
-- [ ] k8s_operator, timeseries, geo, tiering, io_uring present and active
-- [ ] Integration tests (timeseries, geo, tiering) passed
+- [ ] io_uring path active when enabled
+- [ ] Fallback path validated
 
-### Security, Multi-tenancy, Observability (reminders v0.6.0+)
-- [ ] Audit Logging: all admin/sensitive actions logged
-- [ ] Persistent backend: data survives restarts
-- [ ] Watch/Subscribe: real-time notifications, no loss/duplicates
+### Reliability and Consistency
 
+- [ ] Node failure recovery validated
+- [ ] Split-brain resistance validated
+- [ ] Consistency across replicas validated
 
----
+### Operations and Security
 
+- [ ] Compaction and repair safety validated
+- [ ] Audit logging validated
+- [ ] Persistent backend restart durability validated
 
+### Watch and Subscribe
 
-## Real-time Notification Verification
-- **WebSocket/SSE endpoint tested:**
-- **Events received:**
-- **Event content (sample):**
-- [ ] All expected events received
-- [ ] No duplicate or missing events
+- [ ] `/watch/ws` validated
+- [ ] `/watch/sse` validated
+- [ ] Event payload and ordering validated
 
-## Time-Series/Geo/Tiering/Operator Evidence (v0.9.0)
-- **/admin/timeseries/stats:**
-- **/admin/geo/status:**
-- **Tiering stats:**
-- **Operator logs/events:**
+## Attachments
 
-> This report should be archived for each scenario to ensure quality, compliance, and traceability of the minikv v0.9.0 release.
+- Screenshots:
+- Log extracts:
+- Metrics snapshots:
+- Additional artifacts:
 
----
+## Final Notes
 
-> This report should be archived for each scenario execution to ensure quality and compliance of the minikv cluster.
+- Risks identified:
+- Follow-up actions:
+- Owner:
+- Target date:

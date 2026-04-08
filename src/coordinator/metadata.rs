@@ -2,21 +2,17 @@ use once_cell::sync::OnceCell;
 use std::sync::Arc;
 static GLOBAL_STORE: OnceCell<Arc<MetadataStore>> = OnceCell::new();
 
-/// Initializes the global store (call at startup)
 pub fn init_global_store(store: MetadataStore) {
     let _ = GLOBAL_STORE.set(Arc::new(store));
 }
 
-/// Access the global store
 pub fn get_global_store() -> Arc<MetadataStore> {
     GLOBAL_STORE
         .get()
         .expect("Global MetadataStore not initialized")
         .clone()
 }
-/// Metadata store using RocksDB
 ///
-/// This module provides persistent storage for cluster metadata.
 /// It stores key metadata (replicas, size, hash, timestamps), volume registry (node_id to address, state, shards), and cluster configuration.
 use crate::common::{NodeState, Result};
 use rocksdb::{Options, DB};
@@ -27,8 +23,6 @@ const CF_KEYS: &str = "keys";
 const CF_VOLUMES: &str = "volumes";
 const CF_CONFIG: &str = "config";
 
-/// Key metadata
-/// Describes the state and replica set for a single key in the cluster.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyMetadata {
     pub key: String,
@@ -47,7 +41,6 @@ pub enum KeyState {
     Tombstone,
 }
 
-/// Volume metadata
 /// Describes a single volume in the cluster, including its address, state, and assigned shards.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolumeMetadata {
@@ -62,13 +55,11 @@ pub struct VolumeMetadata {
     pub last_heartbeat: u64,
 }
 
-/// Metadata store
 pub struct MetadataStore {
     db: DB,
 }
 
 impl MetadataStore {
-    /// Open or create metadata store
     #[allow(clippy::result_large_err)]
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let mut opts = Options::default();
@@ -80,9 +71,6 @@ impl MetadataStore {
         Ok(Self { db })
     }
 
-    // === Key operations ===
-
-    /// Put key metadata
     #[allow(clippy::result_large_err)]
     pub fn put_key(&self, meta: &KeyMetadata) -> Result<()> {
         let cf = self.db.cf_handle(CF_KEYS).unwrap();
@@ -92,7 +80,6 @@ impl MetadataStore {
         Ok(())
     }
 
-    /// Get key metadata
     #[allow(clippy::result_large_err)]
     pub fn get_key(&self, key: &str) -> Result<Option<KeyMetadata>> {
         let cf = self.db.cf_handle(CF_KEYS).unwrap();
@@ -106,7 +93,6 @@ impl MetadataStore {
         }
     }
 
-    /// Delete key metadata
     #[allow(clippy::result_large_err)]
     pub fn delete_key(&self, key: &str) -> Result<()> {
         let cf = self.db.cf_handle(CF_KEYS).unwrap();
@@ -114,7 +100,6 @@ impl MetadataStore {
         Ok(())
     }
 
-    /// List all keys (for ops commands)
     pub fn list_keys(&self) -> Result<Vec<String>> {
         let cf = self.db.cf_handle(CF_KEYS).unwrap();
         let iter = self.db.iterator_cf(cf, rocksdb::IteratorMode::Start);
@@ -130,9 +115,6 @@ impl MetadataStore {
         Ok(keys)
     }
 
-    // === Volume operations ===
-
-    /// Register or update volume
     pub fn put_volume(&self, meta: &VolumeMetadata) -> Result<()> {
         let cf = self.db.cf_handle(CF_VOLUMES).unwrap();
         let value = bincode::serialize(meta)
@@ -141,7 +123,6 @@ impl MetadataStore {
         Ok(())
     }
 
-    /// Get volume metadata
     pub fn get_volume(&self, volume_id: &str) -> Result<Option<VolumeMetadata>> {
         let cf = self.db.cf_handle(CF_VOLUMES).unwrap();
         match self.db.get_cf(cf, volume_id.as_bytes())? {
@@ -154,7 +135,6 @@ impl MetadataStore {
         }
     }
 
-    /// List all volumes
     pub fn list_volumes(&self) -> Result<Vec<VolumeMetadata>> {
         let cf = self.db.cf_handle(CF_VOLUMES).unwrap();
         let iter = self.db.iterator_cf(cf, rocksdb::IteratorMode::Start);
@@ -170,7 +150,6 @@ impl MetadataStore {
         Ok(volumes)
     }
 
-    /// Get healthy volumes
     pub fn get_healthy_volumes(&self) -> Result<Vec<VolumeMetadata>> {
         Ok(self
             .list_volumes()?
@@ -179,22 +158,17 @@ impl MetadataStore {
             .collect())
     }
 
-    // === Config operations ===
-
-    /// Put config value
     pub fn put_config(&self, key: &str, value: &[u8]) -> Result<()> {
         let cf = self.db.cf_handle(CF_CONFIG).unwrap();
         self.db.put_cf(cf, key.as_bytes(), value)?;
         Ok(())
     }
 
-    /// Get config value
     pub fn get_config(&self, key: &str) -> Result<Option<Vec<u8>>> {
         let cf = self.db.cf_handle(CF_CONFIG).unwrap();
         Ok(self.db.get_cf(cf, key.as_bytes())?)
     }
 
-    /// Flush to disk
     pub fn flush(&self) -> Result<()> {
         self.db.flush()?;
         Ok(())
@@ -211,7 +185,6 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = MetadataStore::open(dir.path().join("test.db")).unwrap();
 
-        // Put key
         let meta = KeyMetadata {
             key: "test-key".to_string(),
             replicas: vec!["vol-1".to_string(), "vol-2".to_string()],
@@ -223,12 +196,10 @@ mod tests {
         };
         store.put_key(&meta).unwrap();
 
-        // Get key
         let retrieved = store.get_key("test-key").unwrap().unwrap();
         assert_eq!(retrieved.key, "test-key");
         assert_eq!(retrieved.replicas.len(), 2);
 
-        // Delete key
         store.delete_key("test-key").unwrap();
         assert!(store.get_key("test-key").unwrap().is_none());
     }

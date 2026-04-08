@@ -1,4 +1,3 @@
-// Conversion vers les types proto
 impl From<&VoteRequest> for crate::proto::VoteRequest {
     fn from(req: &VoteRequest) -> Self {
         Self {
@@ -51,9 +50,7 @@ impl From<&LogEntry> for crate::proto::LogEntry {
         }
     }
 }
-// Raft message structures for communication between nodes
 
-// Structures aligned with kv.proto
 #[derive(Debug, Clone)]
 pub struct VoteRequest {
     pub term: u64,

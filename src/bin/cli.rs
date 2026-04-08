@@ -9,90 +9,64 @@ use minikv::ops::{
     stream_large_blob, verify_cluster,
 };
 
-/// CLI arguments for cluster management.
 #[derive(Parser)]
 #[command(name = "minikv")]
 #[command(about = "minikv distributed key-value store CLI")]
 #[command(version)]
 struct Cli {
-    /// Coordinator URL
     #[arg(long, default_value = "http://localhost:5000")]
     coordinator: String,
 
-    /// Cluster operation to perform
     #[command(subcommand)]
     command: Commands,
 }
 
-/// Supported cluster operations for the CLI.
 #[derive(Subcommand)]
 enum Commands {
-    /// Verify cluster integrity
-    /// Checks for missing or corrupted keys, optionally verifies checksums.
     Verify {
-        /// Deep verification (checksums)
         #[arg(long)]
         deep: bool,
 
-        /// Concurrency level for verification
         #[arg(long, default_value = "16")]
         concurrency: usize,
     },
 
-    /// Repair under-replicated keys
-    /// Attempts to restore the desired replication factor for all keys.
     Repair {
-        /// Target replication factor
         #[arg(long, default_value = "3")]
         replicas: usize,
 
-        /// Dry run (do not perform actual repair)
         #[arg(long)]
         dry_run: bool,
     },
 
-    /// Compact cluster
     Compact {
-        /// Specific shard (all if omitted)
         #[arg(long)]
         shard: Option<u64>,
     },
 
-    /// Put a blob
     Put {
-        /// Key
         key: String,
 
-        /// File path
         #[arg(long)]
         file: std::path::PathBuf,
     },
 
-    /// Get a blob
     Get {
-        /// Key
         key: String,
 
-        /// Output file
         #[arg(long)]
         output: std::path::PathBuf,
     },
 
-    /// Delete a blob
     Delete {
-        /// Key
         key: String,
     },
 
-    /// Trigger auto-rebalancing of cluster data
     Rebalance {},
 
-    /// Prepare cluster for seamless upgrade
     Upgrade {},
 
-    /// Stream a large blob by key
     Stream {
-        /// Key to stream
         #[arg(long)]
         key: String,
     },
@@ -131,7 +105,6 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Commands::Put { key, file } => {
-            // Read value from file
             let value = std::fs::read(&file)?;
             let url = format!("{}/{}", cli.coordinator, key);
             let client = reqwest::Client::new();

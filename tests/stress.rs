@@ -1,5 +1,3 @@
-//! Stress test for minikv cluster: high load, latency, throughput
-
 use minikv::volume::blob::BlobStore;
 use std::time::Instant;
 use tempfile::TempDir;

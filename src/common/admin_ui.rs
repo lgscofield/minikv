@@ -6,7 +6,6 @@ use axum::{
     Router,
 };
 
-/// Dashboard HTML template
 const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -303,7 +302,7 @@ const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
         <header>
             <div class="logo">minikv <span>admin</span></div>
             <div>
-                <span class="version-badge">v0.8.0</span>
+                <span class="version-badge">v1.0.0</span>
             </div>
         </header>
         
@@ -510,12 +509,11 @@ const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
         </div>
         
         <footer>
-            minikv v0.8.0 &mdash; A production-grade distributed KV store
+            minikv v1.0.0 &mdash; A production-grade distributed KV store
         </footer>
     </div>
     
     <script>
-        // Tab switching
         document.querySelectorAll('.nav-tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
@@ -525,7 +523,6 @@ const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
             });
         });
         
-        // Format bytes
         function formatBytes(bytes) {
             if (bytes === 0) return '0 B';
             const k = 1024;
@@ -534,14 +531,12 @@ const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
         
-        // Format date
         function formatDate(dateStr) {
             if (!dateStr) return '-';
             const date = new Date(dateStr);
             return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
         }
         
-        // Fetch cluster status
         async function refreshStatus() {
             try {
                 const response = await fetch('/admin/status');
@@ -562,7 +557,6 @@ const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
             }
         }
         
-        // Fetch API keys
         async function refreshKeys() {
             try {
                 const response = await fetch('/admin/keys');
@@ -595,7 +589,6 @@ const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
             }
         }
         
-        // Quick actions
         async function runVerify() {
             try {
                 const response = await fetch('/admin/verify', { method: 'POST' });
@@ -684,31 +677,26 @@ const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
             }
         }
         
-        // Initial load
         refreshStatus();
         refreshKeys();
         refreshBackups();
         
-        // Auto-refresh every 30 seconds
         setInterval(refreshStatus, 30000);
     </script>
 </body>
 </html>
 "#;
 
-/// Serve the admin dashboard HTML
 pub async fn admin_dashboard() -> impl IntoResponse {
     Html(DASHBOARD_HTML)
 }
 
-/// Create the admin UI router
 pub fn create_admin_ui_router() -> Router {
     Router::new()
         .route("/", get(admin_dashboard))
         .route("/dashboard", get(admin_dashboard))
 }
 
-/// Admin dashboard API response types
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DashboardStats {
     pub cluster_status: String,
@@ -722,19 +710,16 @@ pub struct DashboardStats {
     pub uptime_secs: u64,
 }
 
-/// Backup list response
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BackupListResponse {
     pub backups: Vec<crate::common::backup::BackupManifest>,
 }
 
-/// Plugin list response
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PluginListResponse {
     pub plugins: Vec<PluginSummary>,
 }
 
-/// Plugin summary for UI
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PluginSummary {
     pub id: String,
@@ -744,7 +729,6 @@ pub struct PluginSummary {
     pub status: String,
 }
 
-/// Replication status response
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ReplicationStatusResponse {
     pub enabled: bool,
@@ -752,7 +736,6 @@ pub struct ReplicationStatusResponse {
     pub remote_dcs: Vec<RemoteDCStatus>,
 }
 
-/// Remote datacenter status for UI
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RemoteDCStatus {
     pub id: String,

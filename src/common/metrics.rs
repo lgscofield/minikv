@@ -5,12 +5,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// Histogram bucket boundaries for latency measurements (in milliseconds)
 const LATENCY_BUCKETS: [f64; 11] = [
     1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0,
 ];
 
-/// A simple histogram implementation for latency tracking
 #[derive(Debug)]
 pub struct Histogram {
     buckets: Vec<AtomicU64>,
@@ -20,12 +18,10 @@ pub struct Histogram {
 }
 
 impl Histogram {
-    /// Create a new histogram with default latency buckets
     pub fn new() -> Self {
         Self::with_buckets(&LATENCY_BUCKETS)
     }
 
-    /// Create a histogram with custom bucket boundaries
     pub fn with_buckets(boundaries: &[f64]) -> Self {
         let mut buckets = Vec::with_capacity(boundaries.len() + 1);
         for _ in 0..=boundaries.len() {
@@ -39,9 +35,7 @@ impl Histogram {
         }
     }
 
-    /// Record a value in the histogram
     pub fn observe(&self, value: f64) {
-        // Find the bucket
         let mut bucket_idx = self.boundaries.len();
         for (i, &boundary) in self.boundaries.iter().enumerate() {
             if value <= boundary {
@@ -56,7 +50,6 @@ impl Histogram {
         self.count.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Get histogram data for Prometheus format
     pub fn get_buckets(&self) -> Vec<(f64, u64)> {
         let mut cumulative = 0u64;
         let mut result = Vec::with_capacity(self.boundaries.len() + 1);
@@ -66,19 +59,16 @@ impl Histogram {
             result.push((boundary, cumulative));
         }
 
-        // +Inf bucket
         cumulative += self.buckets[self.boundaries.len()].load(Ordering::Relaxed);
         result.push((f64::INFINITY, cumulative));
 
         result
     }
 
-    /// Get sum of all observed values
     pub fn sum(&self) -> f64 {
         self.sum.load(Ordering::Relaxed) as f64 / 1000.0 // Convert back from microseconds
     }
 
-    /// Get count of observations
     pub fn count(&self) -> u64 {
         self.count.load(Ordering::Relaxed)
     }
@@ -90,7 +80,6 @@ impl Default for Histogram {
     }
 }
 
-/// Counter for tracking request counts
 #[derive(Debug, Default)]
 pub struct Counter {
     value: AtomicU64,
@@ -116,7 +105,6 @@ impl Counter {
     }
 }
 
-/// Gauge for tracking current values
 #[derive(Debug, Default)]
 pub struct Gauge {
     value: AtomicU64,
@@ -146,7 +134,6 @@ impl Gauge {
     }
 }
 
-/// Endpoint metrics
 #[derive(Debug)]
 pub struct EndpointMetrics {
     pub requests_total: Counter,
@@ -172,30 +159,24 @@ impl Default for EndpointMetrics {
     }
 }
 
-/// Global metrics registry
 #[derive(Debug)]
 pub struct MetricsRegistry {
-    /// Per-endpoint metrics
     endpoints: Mutex<HashMap<String, Arc<EndpointMetrics>>>,
 
-    /// Global counters
     pub total_requests: Counter,
     pub total_errors: Counter,
     pub total_bytes_read: Counter,
     pub total_bytes_written: Counter,
 
-    /// Gauges
     pub active_connections: Gauge,
     pub keys_with_ttl: Gauge,
     pub compressed_blobs: Gauge,
     pub rate_limited_requests: Counter,
 
-    /// Start time for uptime calculation
     start_time: Instant,
 }
 
 impl MetricsRegistry {
-    /// Create a new metrics registry
     pub fn new() -> Self {
         Self {
             endpoints: Mutex::new(HashMap::new()),
@@ -211,7 +192,6 @@ impl MetricsRegistry {
         }
     }
 
-    /// Get or create metrics for an endpoint
     pub fn endpoint(&self, path: &str) -> Arc<EndpointMetrics> {
         let mut endpoints = self.endpoints.lock().unwrap();
         endpoints
@@ -220,7 +200,6 @@ impl MetricsRegistry {
             .clone()
     }
 
-    /// Record a request
     pub fn record_request(&self, path: &str, duration: Duration, success: bool) {
         let endpoint = self.endpoint(path);
 
@@ -237,17 +216,14 @@ impl MetricsRegistry {
         }
     }
 
-    /// Get uptime in seconds
     pub fn uptime_seconds(&self) -> u64 {
         self.start_time.elapsed().as_secs()
     }
 
-    /// Generate Prometheus-compatible metrics output
     pub fn to_prometheus(&self) -> String {
         use std::fmt::Write;
         let mut out = String::new();
 
-        // Global metrics
         out.push_str("# HELP minikv_requests_total Total number of requests\n");
         out.push_str("# TYPE minikv_requests_total counter\n");
         writeln!(out, "minikv_requests_total {}", self.total_requests.get()).unwrap();
@@ -300,7 +276,6 @@ impl MetricsRegistry {
         out.push_str("# TYPE minikv_uptime_seconds gauge\n");
         writeln!(out, "minikv_uptime_seconds {}", self.uptime_seconds()).unwrap();
 
-        // Per-endpoint metrics
         let endpoints = self.endpoints.lock().unwrap();
 
         out.push_str("# HELP minikv_endpoint_requests_total Requests per endpoint\n");
@@ -327,7 +302,6 @@ impl MetricsRegistry {
             .unwrap();
         }
 
-        // Latency histograms
         out.push_str("# HELP minikv_request_duration_ms Request duration in milliseconds\n");
         out.push_str("# TYPE minikv_request_duration_ms histogram\n");
         for (path, metrics) in endpoints.iter() {
@@ -374,7 +348,6 @@ impl Default for MetricsRegistry {
     }
 }
 
-/// Global metrics instance
 pub static METRICS: once_cell::sync::Lazy<MetricsRegistry> =
     once_cell::sync::Lazy::new(MetricsRegistry::new);
 

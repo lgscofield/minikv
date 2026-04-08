@@ -1,10 +1,10 @@
-# 🦀 Rust Aix-Marseille (RAM): The Inclusive Rust Community
+# Rust Aix-Marseille (RAM): The Inclusive Rust Community
 
 Welcome to **RAM (Rust Aix-Marseille)** — a warm, inclusive community gathering fans of Rust, systems programming, modern backend, and software architecture in Provence... and beyond!
 
 
 
-## 🌍 Our Mission
+## Our Mission
 
 RAM brings together people who want to learn, build, and share Rust — whether you're in Aix, Marseille, or anywhere (remotely) in the world.
 
@@ -17,7 +17,7 @@ RAM brings together people who want to learn, build, and share Rust — whether 
 
 
 
-## 🫂 Who Can Join?
+## Who Can Join?
 
 **Everyone!**
 - Total beginners, students, professionals, or simply curious
@@ -26,15 +26,15 @@ RAM brings together people who want to learn, build, and share Rust — whether 
 
 
 
-## 📢 Our Community
+## Our Community
 
-**72 members** on Discord
-**110 followers** on LinkedIn
+**85 members** on Discord
+**139 followers** on LinkedIn
 - Grew from scratch in just a single month — and you're welcome to help us grow even more!
 
 
 
-## 📅 Meetups & Events
+## Meetups & Events
 
 RAM organizes:
 - **Online events:** The very first meetup was on January 14, 8:30PM CET
@@ -49,7 +49,7 @@ RAM organizes:
 
 
 
-## 💬 Where to Find Us
+## Where to Find Us
 
 - **Discord (welcome, chat, learn, share):**  
   [https://discord.gg/zgGWvVFJQg](https://discord.gg/zgGWvVFJQg)
@@ -59,17 +59,17 @@ RAM organizes:
 
 
 
-## 🤝 How Can You Get Involved?
+## How Can You Get Involved?
 
 - Join our **Discord** now — introduce yourself and say hi!
 - Follow us on **LinkedIn** for upcoming events and news
 - Suggest a topic, propose a talk, or simply ask your first Rust question!
 - Bring your friends, colleagues, or classmates — more people means more fun
-- Help us build RAM together: propose ideas, animate a discussion, or co-organize with us 🤗
+- Help us build RAM together: propose ideas, animate a discussion, or co-organize with us
 
 
 
-## 🌈 Our Values
+## Our Values
 
 - **Radical inclusion**: Everyone is truly welcome, regardless of background, age, gender, experience, origin, or ability.
 - **No gatekeeping**: All questions are valid. No need to be a “pro” — sharing and learning matter most.
@@ -77,9 +77,9 @@ RAM organizes:
 
 
 
-## ✨ In Short...
+## In Short
 
-> RAM is your space to learn Rust, create cool things, meet awesome humans, and have fun — together, locally and remotely.
+> RAM is your space to learn Rust, create meaningful projects, meet people, and have fun together, locally and remotely.
 
 Whether you want to code, to talk, to listen, or to just see what Rust is about, **RAM has a place for you**.
 
@@ -87,4 +87,4 @@ Whether you want to code, to talk, to listen, or to just see what Rust is about,
 
 See you soon on [Discord](https://discord.gg/zgGWvVFJQg) and [LinkedIn](https://www.linkedin.com/company/rust-aix-marseille-ram)!
 
-_Let’s build the first inclusive Rust community in Provence — and all connected spaces!_
+_Let’s build an inclusive Rust community in Provence and connected spaces._

@@ -9,7 +9,6 @@ fn test_volume_persistence() {
     let data_path = dir.path().join("data");
     let wal_path = dir.path().join("wal");
 
-    // Write data
     {
         let mut store = BlobStore::open(&data_path, &wal_path, WalSyncPolicy::Always).unwrap();
         store.put("key1", b"value1").unwrap();
@@ -17,7 +16,6 @@ fn test_volume_persistence() {
         store.save_snapshot().unwrap();
     }
 
-    // Reopen and verify
     {
         let store = BlobStore::open(&data_path, &wal_path, WalSyncPolicy::Always).unwrap();
         assert_eq!(store.get("key1").unwrap().unwrap(), b"value1");
@@ -31,13 +29,11 @@ fn test_wal_replay() {
     let data_path = dir.path().join("data");
     let wal_path = dir.path().join("wal");
 
-    // Write to WAL
     {
         let mut store = BlobStore::open(&data_path, &wal_path, WalSyncPolicy::Always).unwrap();
         store.put("key1", b"value1").unwrap();
     }
 
-    // Reopen and verify WAL replay
     {
         let store = BlobStore::open(&data_path, &wal_path, WalSyncPolicy::Always).unwrap();
         assert_eq!(store.get("key1").unwrap().unwrap(), b"value1");
@@ -52,15 +48,12 @@ fn test_bloom_filter() {
 
     let mut store = BlobStore::open(&data_path, &wal_path, WalSyncPolicy::Always).unwrap();
 
-    // Write keys
     for i in 0..100 {
         store.put(&format!("key_{}", i), b"value").unwrap();
     }
 
-    // Positive lookup
     assert!(store.get("key_50").unwrap().is_some());
 
-    // Negative lookup (bloom filter)
     assert!(store.get("nonexistent_key").unwrap().is_none());
 }
 

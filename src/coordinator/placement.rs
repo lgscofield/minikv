@@ -8,11 +8,8 @@ use crate::coordinator::metadata::VolumeMetadata;
 
 /// PlacementManager handles sharding and replica selection for distributed writes.
 pub struct PlacementManager {
-    /// Consistent hash ring for shard assignment
     ring: ConsistentHashRing,
-    /// Number of replicas per key
     replicas: usize,
-    /// Total number of shards in the cluster
     num_shards: u64,
 }
 
@@ -25,14 +22,12 @@ impl PlacementManager {
         }
     }
 
-    /// Select volumes for a key.
     /// Uses HRW hashing to assign the key to a shard and select healthy replicas.
     pub fn select_volumes(&self, key: &str, volumes: &[VolumeMetadata]) -> Result<Vec<String>> {
         if volumes.is_empty() {
             return Err(crate::Error::NoHealthyVolumes);
         }
 
-        // Filter healthy volumes
         let healthy: Vec<String> = volumes
             .iter()
             .filter(|v| v.state.is_healthy())
@@ -43,7 +38,6 @@ impl PlacementManager {
             return Err(crate::Error::NoHealthyVolumes);
         }
 
-        // Use HRW to select replicas
         let selected = select_replicas(key, &healthy, self.replicas);
 
         if selected.len() < self.replicas {
@@ -56,12 +50,10 @@ impl PlacementManager {
         Ok(selected)
     }
 
-    /// Get shard for key
     pub fn get_shard(&self, key: &str) -> u64 {
         shard_key(key, self.num_shards)
     }
 
-    /// Rebalance shards across volumes
     pub fn rebalance(&mut self, volumes: &[VolumeMetadata]) {
         let available: Vec<String> = volumes
             .iter()
@@ -72,7 +64,6 @@ impl PlacementManager {
         self.ring.rebalance(&available, self.replicas);
     }
 
-    /// Get volumes for a specific shard
     pub fn get_shard_volumes(&self, shard: u64) -> Option<Vec<String>> {
         self.ring.get_shard_nodes(shard).map(|nodes| nodes.to_vec())
     }

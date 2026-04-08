@@ -1,29 +1,49 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# Script to collect Prometheus metrics and Raft logs for minikv
-# Usage: ./collect_metrics.sh <coordinator_host> <output_dir>
+set -euo pipefail
 
-set -e
+usage() {
+  echo "Usage: $0 [host:port] [output_dir]"
+  echo "Example: $0 localhost:8080 ./metrics_logs"
+}
 
-COORD_HOST=${1:-localhost:5000}
-OUTDIR=${2:-./metrics_logs}
-
-mkdir -p "$OUTDIR"
-DATE=$(date +"%Y%m%d_%H%M%S")
-
-echo "Collecting Prometheus metrics..."
-curl -s "http://$COORD_HOST/metrics" > "$OUTDIR/metrics_$DATE.txt"
-
-echo "Collecting Raft logs (example: via API or local file)..."
-# Replace with actual command if exposed
-if curl -s "http://$COORD_HOST/admin/raft_log" > "$OUTDIR/raft_log_$DATE.txt"; then
-  echo "Raft log collected via HTTP endpoint."
-else
-  echo "Endpoint /admin/raft_log not available, log not collected."
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
 fi
 
-echo "Collecting system logs (optional)"
-# journalctl or docker logs if applicable
-# docker logs minikv-coordinator > "$OUTDIR/coordinator_docker_$DATE.txt"
+if ! command -v curl >/dev/null 2>&1; then
+  echo "Error: curl is required but was not found." >&2
+  exit 1
+fi
 
-echo "Metrics and logs collected in $OUTDIR."
+COORD_HOST="${1:-localhost:8080}"
+OUTDIR="${2:-./metrics_logs}"
+DATE="$(date +"%Y%m%d_%H%M%S")"
+
+mkdir -p "$OUTDIR"
+
+collect_endpoint() {
+  local endpoint="$1"
+  local output_file="$2"
+
+  if curl -fsS "http://${COORD_HOST}${endpoint}" >"$output_file"; then
+    echo "Collected ${endpoint} -> ${output_file}"
+    return 0
+  fi
+
+  rm -f "$output_file"
+  echo "Skipped ${endpoint} (unavailable or non-2xx)"
+  return 1
+}
+
+echo "Collecting diagnostics from ${COORD_HOST}"
+
+collect_endpoint "/metrics" "$OUTDIR/metrics_${DATE}.txt"
+collect_endpoint "/health/live" "$OUTDIR/health_live_${DATE}.txt" || true
+collect_endpoint "/health/ready" "$OUTDIR/health_ready_${DATE}.txt" || true
+collect_endpoint "/admin/status" "$OUTDIR/admin_status_${DATE}.txt" || true
+collect_endpoint "/admin/vector/stats" "$OUTDIR/vector_stats_${DATE}.txt" || true
+collect_endpoint "/admin/raft_log" "$OUTDIR/raft_log_${DATE}.txt" || true
+
+echo "Done. Artifacts available in ${OUTDIR}"

@@ -134,7 +134,7 @@ echo ""
 # Wait for cluster to be ready
 echo -n "Waiting for cluster to be ready"
 for i in {1..30}; do
-    if curl -s "http://127.0.0.1:5000/health" > /dev/null 2>&1; then
+    if curl -s "http://127.0.0.1:5000/health/live" > /dev/null 2>&1; then
         echo ""
         echo -e "${GREEN}[OK] Cluster ready${NC}"
         break
@@ -191,7 +191,7 @@ export default function () {
     const putRes = http.put(`${BASE_URL}/${key}`, data);
     const putDuration = Date.now() - putStart;
     
-    putRate.add(putRes.status === 201 || putRes.status === 501); // 501 = not implemented yet
+    putRate.add(putRes.status === 201 || putRes.status === 501); // 501 is accepted by this benchmark profile
     putLatency.add(putDuration);
     
     check(putRes, {

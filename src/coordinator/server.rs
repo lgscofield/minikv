@@ -1,4 +1,3 @@
-/// Coordinator server
 use axum_server::tls_rustls::{bind_rustls, RustlsConfig};
 use std::future::IntoFuture;
 
@@ -27,20 +26,16 @@ impl Coordinator {
         tracing::info!("  DB path: {}", self.config.db_path.display());
         tracing::info!("  Replicas: {}", self.config.replicas);
 
-        // Initialize metadata store
         let metadata = Arc::new(MetadataStore::open(&self.config.db_path)?);
 
-        // Initialize placement manager
         let placement = Arc::new(Mutex::new(PlacementManager::new(
             self.config.num_shards,
             self.config.replicas,
         )));
 
-        // Initialize Raft
         let raft = Arc::new(RaftNode::new(self.node_id.clone()));
         let _raft_handle = start_raft_tasks(raft.clone());
 
-        // Create HTTP server
         let http_state = CoordState {
             metadata: metadata.clone(),
             placement: placement.clone(),
@@ -48,7 +43,6 @@ impl Coordinator {
         };
         let http_router = create_router(http_state);
 
-        // TLS support (axum-server/rustls)
         let use_tls = self.config.tls_cert_path.is_some() && self.config.tls_key_path.is_some();
         use std::future::Future;
         use std::pin::Pin;
@@ -69,7 +63,6 @@ impl Coordinator {
             Box::pin(axum::serve(http_listener, http_router.clone()).into_future())
         };
 
-        // Create gRPC server (TLS enabled if certs are present)
         let grpc_service = CoordGrpcService::new();
         let grpc_server = if let (Some(cert_path), Some(key_path)) = (
             self.config.tls_cert_path.as_ref(),
@@ -77,7 +70,6 @@ impl Coordinator {
         ) {
             use tokio::fs;
             use tonic::transport::{Identity, ServerTlsConfig};
-            // Load PEM files
             let cert = fs::read(cert_path).await.expect("Cannot read TLS cert");
             let key = fs::read(key_path).await.expect("Cannot read TLS key");
             let identity = Identity::from_pem(cert, key);
@@ -91,8 +83,6 @@ impl Coordinator {
                 .add_service(grpc_service.into_server())
                 .serve(self.config.grpc_addr)
         };
-
-        // Start servers
 
         tracing::info!("Coordinator ready ({:?})", raft.get_role());
 

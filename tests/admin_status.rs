@@ -19,13 +19,10 @@ fn get_free_port() -> u16 {
 
 /// Launch the minikv-coord server in the background, returns (Child, http_port, grpc_port)
 fn start_server() -> (Child, u16, u16) {
-    // Free ports
     let http_port = get_free_port();
     let grpc_port = get_free_port();
-    // Remove data directory to avoid RocksDB locks
     let _ = std::fs::remove_dir_all("coord-test-data");
     let _ = std::fs::create_dir_all("coord-test-data");
-    // Write a minimal config.toml file
     std::fs::write(
         "config.toml",
         "node_id = 'coord-test'\nrole = 'coordinator'\n",
@@ -60,7 +57,6 @@ async fn wait_for_server(child: &mut Child, http_port: u16) {
     let url = format!("http://localhost:{}/admin/status", http_port);
     let start = Instant::now();
     loop {
-        // If the server has exited, print the error
         if let Some(status) = child.try_wait().expect("Error waiting for server") {
             if let Some(mut stderr) = child.stderr.take() {
                 use std::io::Read;
@@ -89,9 +85,7 @@ async fn test_admin_status() {
         eprintln!("Skipping test_admin_status: CARGO_BIN_EXE_minikv-coord not set");
         return;
     }
-    // Start the server
     let (mut server, http_port, _grpc_port) = start_server();
-    // Wait until it is ready
     wait_for_server(&mut server, http_port).await;
 
     let client = Client::new();
@@ -110,7 +104,6 @@ async fn test_admin_status() {
     assert!(json.get("nb_volumes").is_some());
     assert!(json.get("nb_s3_objects").is_some());
 
-    // Stop the server
     let _ = server.kill();
     let _ = server.wait();
 }

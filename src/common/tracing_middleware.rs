@@ -11,15 +11,12 @@ use std::time::Instant;
 use tracing::{info, warn};
 use uuid::Uuid;
 
-/// Header name for request ID
 pub const REQUEST_ID_HEADER: &str = "X-Request-ID";
 
-/// Generate a new unique request ID
 pub fn generate_request_id() -> String {
     Uuid::new_v4().to_string()
 }
 
-/// Middleware that adds request ID and structured logging to each request
 pub async fn request_tracing_middleware(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     request: Request<Body>,
@@ -27,7 +24,6 @@ pub async fn request_tracing_middleware(
 ) -> Response<Body> {
     let start = Instant::now();
 
-    // Generate or extract request ID
     let request_id = request
         .headers()
         .get(REQUEST_ID_HEADER)
@@ -40,7 +36,6 @@ pub async fn request_tracing_middleware(
     let path = uri.path().to_string();
     let client_ip = addr.ip().to_string();
 
-    // Create a span for this request
     let span = tracing::info_span!(
         "http_request",
         request_id = %request_id,
@@ -59,18 +54,15 @@ pub async fn request_tracing_middleware(
         "Request started"
     );
 
-    // Execute the request
     let mut response = next.run(request).await;
 
     let duration = start.elapsed();
     let status = response.status();
 
-    // Add request ID to response headers
     response
         .headers_mut()
         .insert(REQUEST_ID_HEADER, request_id.parse().unwrap());
 
-    // Log completion
     if status.is_success() {
         info!(
             request_id = %request_id,
@@ -103,9 +95,7 @@ pub async fn request_tracing_middleware(
     response
 }
 
-/// Simpler middleware that just adds request ID without full tracing
 pub async fn request_id_middleware(request: Request<Body>, next: Next) -> Response<Body> {
-    // Generate or extract request ID
     let request_id = request
         .headers()
         .get(REQUEST_ID_HEADER)
@@ -115,7 +105,6 @@ pub async fn request_id_middleware(request: Request<Body>, next: Next) -> Respon
 
     let mut response = next.run(request).await;
 
-    // Add request ID to response headers
     response
         .headers_mut()
         .insert(REQUEST_ID_HEADER, request_id.parse().unwrap());
@@ -132,11 +121,9 @@ mod tests {
         let id1 = generate_request_id();
         let id2 = generate_request_id();
 
-        // Should be valid UUIDs
         assert!(Uuid::parse_str(&id1).is_ok());
         assert!(Uuid::parse_str(&id2).is_ok());
 
-        // Should be unique
         assert_ne!(id1, id2);
     }
 }

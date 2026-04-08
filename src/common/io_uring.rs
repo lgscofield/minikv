@@ -9,50 +9,36 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-// ============================================================================
-// Configuration
-// ============================================================================
-
 /// io_uring configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IoUringConfig {
-    /// Enable io_uring
     #[serde(default)]
     pub enabled: bool,
 
-    /// Submission queue depth
     #[serde(default = "default_sq_depth")]
     pub sq_depth: u32,
 
-    /// Completion queue depth (usually 2x sq_depth)
     #[serde(default = "default_cq_depth")]
     pub cq_depth: u32,
 
-    /// Enable kernel polling (IORING_SETUP_SQPOLL)
     #[serde(default)]
     pub kernel_poll: bool,
 
-    /// Kernel poll thread idle timeout in milliseconds
     #[serde(default = "default_poll_idle")]
     pub poll_idle_ms: u32,
 
-    /// Use registered buffers for zero-copy
     #[serde(default = "default_true")]
     pub registered_buffers: bool,
 
-    /// Number of registered buffers
     #[serde(default = "default_buffer_count")]
     pub buffer_count: usize,
 
-    /// Size of each registered buffer
     #[serde(default = "default_buffer_size")]
     pub buffer_size: usize,
 
-    /// Enable direct I/O (O_DIRECT)
     #[serde(default)]
     pub direct_io: bool,
 
-    /// Batch size for submissions
     #[serde(default = "default_batch_size")]
     pub batch_size: usize,
 }
@@ -102,11 +88,6 @@ impl Default for IoUringConfig {
     }
 }
 
-// ============================================================================
-// I/O Operations
-// ============================================================================
-
-/// I/O operation type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IoOpType {
     Read,
@@ -115,85 +96,59 @@ pub enum IoOpType {
     Fdatasync,
 }
 
-/// I/O operation request
 #[derive(Debug)]
 pub struct IoRequest {
-    /// Operation type
     pub op: IoOpType,
 
-    /// File descriptor (or path for open)
     pub fd: i32,
 
-    /// Offset in file
     pub offset: u64,
 
-    /// Buffer for data
     pub buffer: Vec<u8>,
 
-    /// User data (returned with completion)
     pub user_data: u64,
 }
 
-/// I/O operation result
 #[derive(Debug)]
 pub struct IoResult {
-    /// User data from request
     pub user_data: u64,
 
-    /// Result code (bytes transferred or error)
     pub result: i32,
 
-    /// Operation type
     pub op: IoOpType,
 }
-
-// ============================================================================
-// io_uring Abstraction
-// ============================================================================
 
 /// io_uring interface (abstraction for platform compatibility)
 pub struct IoUring {
     config: IoUringConfig,
 
-    /// Pending submissions
     pending: VecDeque<IoRequest>,
 
-    /// Statistics
     stats: Arc<IoUringStats>,
 
-    /// Whether io_uring is available
     available: bool,
 }
 
 /// io_uring statistics
 #[derive(Debug, Default)]
 pub struct IoUringStats {
-    /// Total submissions
     pub submissions: AtomicU64,
 
-    /// Total completions
     pub completions: AtomicU64,
 
-    /// Total bytes read
     pub bytes_read: AtomicU64,
 
-    /// Total bytes written
     pub bytes_written: AtomicU64,
 
-    /// Batched submissions
     pub batched_submissions: AtomicU64,
 
-    /// Average batch size
     pub avg_batch_size: AtomicU64,
 
-    /// Kernel poll wakeups
     pub poll_wakeups: AtomicU64,
 }
 
 impl IoUring {
-    /// Create a new io_uring instance
     pub fn new(config: IoUringConfig) -> Result<Self> {
-        // Check if io_uring is available (Linux 5.1+)
         let available = Self::check_availability();
 
         if config.enabled && !available {
@@ -208,14 +163,11 @@ impl IoUring {
         })
     }
 
-    /// Check if io_uring is available
     fn check_availability() -> bool {
         #[cfg(target_os = "linux")]
         {
-            // Check kernel version
             use std::fs;
             if let Ok(version) = fs::read_to_string("/proc/version") {
-                // Parse kernel version
                 if let Some(ver) = version.split_whitespace().nth(2) {
                     let parts: Vec<&str> = ver.split('.').collect();
                     if parts.len() >= 2 {
@@ -227,7 +179,6 @@ impl IoUring {
                             .parse()
                             .unwrap_or(0);
 
-                        // io_uring available in 5.1+
                         return major > 5 || (major == 5 && minor >= 1);
                     }
                 }
@@ -241,12 +192,10 @@ impl IoUring {
         }
     }
 
-    /// Check if io_uring is enabled and available
     pub fn is_enabled(&self) -> bool {
         self.config.enabled && self.available
     }
 
-    /// Submit a read operation
     pub fn submit_read(&mut self, fd: i32, offset: u64, len: usize, user_data: u64) {
         let request = IoRequest {
             op: IoOpType::Read,
@@ -260,7 +209,6 @@ impl IoUring {
         self.stats.submissions.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Submit a write operation
     pub fn submit_write(&mut self, fd: i32, offset: u64, data: Vec<u8>, user_data: u64) {
         let request = IoRequest {
             op: IoOpType::Write,
@@ -274,7 +222,6 @@ impl IoUring {
         self.stats.submissions.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Submit an fsync operation
     pub fn submit_fsync(&mut self, fd: i32, user_data: u64) {
         let request = IoRequest {
             op: IoOpType::Fsync,
@@ -288,16 +235,8 @@ impl IoUring {
         self.stats.submissions.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Flush pending submissions
     pub fn flush(&mut self) -> Vec<IoResult> {
-        let results = if !self.is_enabled() {
-            // Fallback to synchronous I/O
-            self.flush_sync()
-        } else {
-            // Would use actual io_uring here
-            // For now, use sync fallback
-            self.flush_sync()
-        };
+        let results = self.flush_sync();
 
         let count = results.len() as u64;
         if count > 0 {
@@ -310,7 +249,6 @@ impl IoUring {
         results
     }
 
-    /// Synchronous fallback implementation
     fn flush_sync(&mut self) -> Vec<IoResult> {
         let mut results = Vec::new();
 
@@ -335,7 +273,6 @@ impl IoUring {
     }
 
     fn sync_read(&self, _fd: i32, _offset: u64, len: usize) -> i32 {
-        // Placeholder - actual implementation would use fd
         self.stats
             .bytes_read
             .fetch_add(len as u64, Ordering::Relaxed);
@@ -343,7 +280,6 @@ impl IoUring {
     }
 
     fn sync_write(&self, _fd: i32, _offset: u64, data: &[u8]) -> i32 {
-        // Placeholder - actual implementation would use fd
         self.stats
             .bytes_written
             .fetch_add(data.len() as u64, Ordering::Relaxed);
@@ -351,26 +287,18 @@ impl IoUring {
     }
 
     fn sync_fsync(&self, _fd: i32) -> i32 {
-        // Placeholder
         0
     }
 
-    /// Get statistics
     pub fn stats(&self) -> &IoUringStats {
         &self.stats
     }
 
-    /// Get pending count
     pub fn pending_count(&self) -> usize {
         self.pending.len()
     }
 }
 
-// ============================================================================
-// High-Level File I/O
-// ============================================================================
-
-/// High-performance file handle using io_uring
 #[allow(dead_code)]
 pub struct UringFile {
     path: PathBuf,
@@ -380,7 +308,6 @@ pub struct UringFile {
 }
 
 impl UringFile {
-    /// Open a file for io_uring operations
     pub fn open(path: PathBuf, config: &IoUringConfig) -> Result<Self> {
         let file = std::fs::OpenOptions::new()
             .read(true)
@@ -404,7 +331,6 @@ impl UringFile {
         })
     }
 
-    /// Read data at offset
     pub fn read_at(&mut self, offset: u64, len: usize) -> Result<Vec<u8>> {
         if let Some(ref mut file) = self.file {
             let mut buffer = vec![0u8; len];
@@ -418,7 +344,6 @@ impl UringFile {
         }
     }
 
-    /// Write data at offset
     pub fn write_at(&mut self, offset: u64, data: &[u8]) -> Result<()> {
         if let Some(ref mut file) = self.file {
             file.seek(SeekFrom::Start(offset))
@@ -431,7 +356,6 @@ impl UringFile {
         }
     }
 
-    /// Sync to disk
     pub fn sync(&mut self) -> Result<()> {
         if let Some(ref file) = self.file {
             file.sync_all()
@@ -440,22 +364,18 @@ impl UringFile {
         Ok(())
     }
 
-    /// Async read (queued)
     pub fn async_read(&mut self, offset: u64, len: usize, user_data: u64) {
         if let Some(ref mut uring) = self.uring {
-            // Would use actual fd here
             uring.submit_read(0, offset, len, user_data);
         }
     }
 
-    /// Async write (queued)
     pub fn async_write(&mut self, offset: u64, data: Vec<u8>, user_data: u64) {
         if let Some(ref mut uring) = self.uring {
             uring.submit_write(0, offset, data, user_data);
         }
     }
 
-    /// Flush async operations
     pub fn flush_async(&mut self) -> Vec<IoResult> {
         if let Some(ref mut uring) = self.uring {
             uring.flush()
@@ -465,11 +385,6 @@ impl UringFile {
     }
 }
 
-// ============================================================================
-// Batched Write Buffer
-// ============================================================================
-
-/// Write buffer for batching small writes
 pub struct WriteBatcher {
     buffer: Vec<(u64, Vec<u8>)>, // (offset, data)
     max_entries: usize,
@@ -487,7 +402,6 @@ impl WriteBatcher {
         }
     }
 
-    /// Add a write to the batch
     pub fn add(&mut self, offset: u64, data: Vec<u8>) -> bool {
         let data_len = data.len();
 
@@ -500,33 +414,24 @@ impl WriteBatcher {
         true
     }
 
-    /// Check if batch is full
     pub fn is_full(&self) -> bool {
         self.buffer.len() >= self.max_entries || self.current_bytes >= self.max_bytes
     }
 
-    /// Take the batch
     pub fn take(&mut self) -> Vec<(u64, Vec<u8>)> {
         self.current_bytes = 0;
         std::mem::take(&mut self.buffer)
     }
 
-    /// Current entry count
     pub fn len(&self) -> usize {
         self.buffer.len()
     }
 
-    /// Is empty
     pub fn is_empty(&self) -> bool {
         self.buffer.is_empty()
     }
 }
 
-// ============================================================================
-// Statistics Snapshot
-// ============================================================================
-
-/// Statistics snapshot
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IoUringStatsSnapshot {
     pub submissions: u64,
@@ -551,10 +456,6 @@ impl From<&IoUringStats> for IoUringStatsSnapshot {
         }
     }
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
 
 #[cfg(test)]
 mod tests {

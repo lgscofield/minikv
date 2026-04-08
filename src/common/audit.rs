@@ -7,7 +7,6 @@ use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::sync::Mutex;
 
-/// Audit log event types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AuditEventType {
     AuthSuccess,
@@ -23,7 +22,6 @@ pub enum AuditEventType {
     System,
 }
 
-/// Audit log entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEntry {
     #[serde(with = "chrono::serde::ts_seconds")]
@@ -35,7 +33,6 @@ pub struct AuditEntry {
     pub meta: Option<serde_json::Value>,
 }
 
-/// Audit logger (singleton)
 pub struct AuditLogger {
     file: Option<Mutex<File>>,
     to_stdout: bool,
@@ -44,7 +41,6 @@ pub struct AuditLogger {
 pub static AUDIT_LOGGER: Lazy<AuditLogger> = Lazy::new(|| AuditLogger::new("audit.log", true));
 
 impl AuditLogger {
-    /// Create a new audit logger
     pub fn new(path: &str, to_stdout: bool) -> Self {
         let file = OpenOptions::new()
             .create(true)
@@ -55,7 +51,6 @@ impl AuditLogger {
         Self { file, to_stdout }
     }
 
-    /// Log an audit entry
     pub fn log(&self, entry: AuditEntry) {
         let line = serde_json::to_string(&entry).unwrap_or_else(|_| "{}".to_string());
         if let Some(file) = &self.file {
@@ -68,7 +63,6 @@ impl AuditLogger {
         }
     }
 
-    /// Convenience for logging an event
     pub fn log_event(
         &self,
         event: AuditEventType,

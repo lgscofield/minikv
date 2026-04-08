@@ -3,13 +3,11 @@
 use blake3::Hasher;
 use std::collections::HashMap;
 
-/// Compute BLAKE3 hash of data, return hex string
 pub fn blake3_hash(data: &[u8]) -> String {
     let hash = blake3::hash(data);
     format!("{}", hash)
 }
 
-/// Compute BLAKE3 hash incrementally (for streaming)
 pub struct Blake3Hasher {
     hasher: Hasher,
 }
@@ -37,16 +35,13 @@ impl Default for Blake3Hasher {
     }
 }
 
-/// Compute shard ID for a key (consistent hashing)
 pub fn shard_key(key: &str, num_shards: u64) -> u64 {
     let hash = blake3::hash(key.as_bytes());
     let hash_u64 = u64::from_le_bytes(hash.as_bytes()[0..8].try_into().unwrap());
     hash_u64 % num_shards
 }
 
-/// HRW (Highest Random Weight) hashing for replica placement
 ///
-/// Given a key and a set of nodes, returns nodes sorted by their weight
 /// (deterministic based on key).  This ensures consistent placement even
 /// as the cluster changes.
 pub fn hrw_hash(key: &str, nodes: &[String]) -> Vec<String> {
@@ -60,30 +55,22 @@ pub fn hrw_hash(key: &str, nodes: &[String]) -> Vec<String> {
         })
         .collect();
 
-    // Sort by weight (descending)
     weights.sort_by(|a, b| b.1.cmp(&a.1));
 
     weights.into_iter().map(|(node, _)| node).collect()
 }
 
-/// Select N replicas using HRW hashing
 pub fn select_replicas(key: &str, nodes: &[String], n: usize) -> Vec<String> {
     let sorted = hrw_hash(key, nodes);
     sorted.into_iter().take(n).collect()
 }
 
-/// Compute directory prefix for blob storage (2-level hierarchy)
-///
-/// Returns (aa, bb) where aa and bb are the first two bytes of BLAKE3(key)
-/// This creates a balanced directory tree: blobs/aa/bb/key
 pub fn blob_prefix(key: &str) -> (String, String) {
     let hash = blake3::hash(key.as_bytes());
     let bytes = hash.as_bytes();
     (format!("{:02x}", bytes[0]), format!("{:02x}", bytes[1]))
 }
 
-/// Consistent hash ring for sharding
-///
 /// Maps keys to shards, and shards to nodes. Supports rebalancing
 /// when nodes are added/removed.
 pub struct ConsistentHashRing {
@@ -99,23 +86,19 @@ impl ConsistentHashRing {
         }
     }
 
-    /// Assign a shard to specific nodes
     pub fn assign_shard(&mut self, shard: u64, nodes: Vec<String>) {
         self.shard_to_nodes.insert(shard, nodes);
     }
 
-    /// Get nodes responsible for a key
     pub fn get_nodes(&self, key: &str) -> Option<&[String]> {
         let shard = shard_key(key, self.num_shards);
         self.shard_to_nodes.get(&shard).map(|v| v.as_slice())
     }
 
-    /// Get nodes for a specific shard
     pub fn get_shard_nodes(&self, shard: u64) -> Option<&[String]> {
         self.shard_to_nodes.get(&shard).map(|v| v.as_slice())
     }
 
-    /// Rebalance: redistribute shards across available nodes
     pub fn rebalance(&mut self, available_nodes: &[String], replicas: usize) {
         for shard in 0..self.num_shards {
             let shard_key = format!("shard-{}", shard);
@@ -124,7 +107,6 @@ impl ConsistentHashRing {
         }
     }
 
-    /// Get all shards assigned to a node
     pub fn shards_for_node(&self, node: &str) -> Vec<u64> {
         self.shard_to_nodes
             .iter()
@@ -185,7 +167,6 @@ mod tests {
         let sorted1 = hrw_hash("key1", &nodes);
         let sorted2 = hrw_hash("key2", &nodes);
 
-        // Different keys should produce different orderings
         assert_ne!(sorted1, sorted2);
     }
 
@@ -220,7 +201,6 @@ mod tests {
         ring.assign_shard(1, nodes.clone());
 
         assert_eq!(ring.get_shard_nodes(0), Some(nodes.as_slice()));
-        // Find a key that maps to shard 0
         let mut found_key = None;
         for i in 0..10000 {
             let candidate = format!("key-{}", i);
@@ -244,7 +224,6 @@ mod tests {
 
         ring.rebalance(&nodes, 2);
 
-        // All shards should have 2 replicas
         for shard in 0..4 {
             let assigned = ring.get_shard_nodes(shard).unwrap();
             assert_eq!(assigned.len(), 2);

@@ -190,7 +190,7 @@ impl BlobStore {
     }
 
     pub fn compact(&mut self) -> Result<()> {
-        Ok(()) // Simplified for now
+        Ok(())
     }
 
     pub fn save_snapshot(&self) -> Result<()> {

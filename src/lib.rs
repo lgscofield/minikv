@@ -7,26 +7,9 @@
 //! - gRPC for internal coordination, HTTP for public API
 //! - Bloom filters and index snapshots for performance
 //!
-//! ## New in v0.8.0
-//! - Cross-datacenter replication with conflict resolution
-//! - Change Data Capture (CDC) for real-time event streaming
-//! - Admin Web UI for cluster monitoring and management
-//! - Full and incremental backup with restore support
-//! - Plugin system for extensibility
-//!
-//! ## v0.5.0 Features
-//! - TTL (Time-To-Live) support for automatic key expiration
-//! - LZ4 compression for storage efficiency
-//! - Rate limiting with per-IP token bucket algorithm
-//! - Request ID tracking and structured logging
-//! - Enhanced Prometheus metrics with latency histograms
-//! - Kubernetes health probes (/health/ready, /health/live)
-//!
 //! ## Architecture
 
 #![allow(clippy::result_large_err)]
-// CI trigger: commit for relaunch
-// Another CI trigger: force new commit
 //!
 //! ```text
 //! ┌─────────────────────────────────────────┐
@@ -87,18 +70,14 @@ pub mod coordinator;
 pub mod ops;
 pub mod volume;
 
-// Re-export commonly used types
 pub use common::{Config, Error, Result};
 pub use coordinator::Coordinator;
 pub use volume::VolumeServer;
 
-// Generated protobuf code
 pub mod proto {
     tonic::include_proto!("minikv");
 }
 
-/// Current version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Build info
 pub const BUILD_INFO: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("CARGO_PKG_NAME"), ")");

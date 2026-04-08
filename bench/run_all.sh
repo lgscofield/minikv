@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-## Run all benchmark scenarios
 
 set -euo pipefail
 
@@ -10,7 +9,6 @@ echo "Running all benchmark scenarios..."
 echo "Results will be saved to: ${RESULTS_DIR}"
 echo ""
 
-## Start cluster
 echo "Starting test cluster..."
 ./scripts/serve.sh 1 1 &
 CLUSTER_PID=$!
@@ -23,7 +21,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-## Run scenarios
 scenarios=(
     "write-heavy:Write-Heavy (90% writes)"
     "read-heavy:Read-Heavy (90% reads)"
@@ -49,7 +46,6 @@ echo ""
 echo "All benchmarks completed!"
 echo "Results: ${RESULTS_DIR}"
 
-## Generate summary report
 cat > "${RESULTS_DIR}/SUMMARY.md" << EOF
 # Benchmark Results
 

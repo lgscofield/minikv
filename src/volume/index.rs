@@ -14,7 +14,6 @@ use std::path::Path;
 
 const SNAPSHOT_MAGIC: &[u8; 8] = b"KVINDEX3"; // Bumped version for TTL support
 
-/// Blob location metadata
 /// Describes the physical location of a value in the log-structured storage engine.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlobLocation {
@@ -22,15 +21,10 @@ pub struct BlobLocation {
     pub offset: u64,
     pub size: u64,
     pub blake3: String,
-    /// Optional expiration timestamp in milliseconds since Unix epoch.
-    /// If None, the key never expires.
     #[serde(default)]
     pub expires_at: Option<u64>,
 }
 
-/// In-memory index
-/// HashMap-based index for fast key lookups.
-/// Supports saving/loading snapshots for recovery.
 #[derive(Debug, Default)]
 pub struct Index {
     map: HashMap<String, BlobLocation>,
@@ -43,53 +37,42 @@ impl Index {
         }
     }
 
-    /// Insert or update a key in the index.
     pub fn insert(&mut self, key: String, location: BlobLocation) {
         self.map.insert(key, location);
     }
 
-    /// Get location for key
     pub fn get(&self, key: &str) -> Option<&BlobLocation> {
         self.map.get(key)
     }
 
-    /// Remove key
     pub fn remove(&mut self, key: &str) -> Option<BlobLocation> {
         self.map.remove(key)
     }
 
-    /// Check if key exists
     pub fn contains(&self, key: &str) -> bool {
         self.map.contains_key(key)
     }
 
-    /// Number of keys
     pub fn len(&self) -> usize {
         self.map.len()
     }
 
-    /// Is empty
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
     }
 
-    /// Iterate over all keys
     pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.map.keys()
     }
 
-    /// Iterate over all entries
     pub fn iter(&self) -> impl Iterator<Item = (&String, &BlobLocation)> {
         self.map.iter()
     }
 
-    /// Clear all entries
     pub fn clear(&mut self) {
         self.map.clear();
     }
 
-    /// Check if a key is expired.
-    /// Returns true if the key exists and has expired.
     pub fn is_expired(&self, key: &str) -> bool {
         if let Some(loc) = self.map.get(key) {
             if let Some(expires_at) = loc.expires_at {
@@ -103,7 +86,6 @@ impl Index {
         false
     }
 
-    /// Get location for key, returning None if expired.
     pub fn get_if_valid(&self, key: &str) -> Option<&BlobLocation> {
         if self.is_expired(key) {
             return None;
@@ -111,7 +93,6 @@ impl Index {
         self.map.get(key)
     }
 
-    /// Remove all expired keys and return the number of keys removed.
     pub fn cleanup_expired(&mut self) -> usize {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -132,7 +113,6 @@ impl Index {
         count
     }
 
-    /// Get all keys that have TTL set (for monitoring)
     pub fn keys_with_ttl(&self) -> Vec<(&String, u64)> {
         self.map
             .iter()
@@ -140,36 +120,27 @@ impl Index {
             .collect()
     }
 
-    /// Save the current index as a snapshot file.
-    /// Used for fast recovery after restart.
     pub fn save_snapshot(&self, path: impl AsRef<Path>) -> Result<()> {
         let file = File::create(path)?;
         let mut writer = BufWriter::new(file);
 
-        // Write magic
         writer.write_all(SNAPSHOT_MAGIC)?;
 
-        // Write number of entries
         writer.write_all(&(self.map.len() as u64).to_le_bytes())?;
 
-        // Write each entry
         for (key, loc) in &self.map {
-            // Key length + key
             let key_bytes = key.as_bytes();
             writer.write_all(&(key_bytes.len() as u32).to_le_bytes())?;
             writer.write_all(key_bytes)?;
 
-            // Location data
             writer.write_all(&loc.shard.to_le_bytes())?;
             writer.write_all(&loc.offset.to_le_bytes())?;
             writer.write_all(&loc.size.to_le_bytes())?;
 
-            // BLAKE3 hash length + hash
             let hash_bytes = loc.blake3.as_bytes();
             writer.write_all(&(hash_bytes.len() as u32).to_le_bytes())?;
             writer.write_all(hash_bytes)?;
 
-            // TTL: expires_at (0 = no expiration, >0 = timestamp)
             let expires_at = loc.expires_at.unwrap_or(0);
             writer.write_all(&expires_at.to_le_bytes())?;
         }
@@ -178,31 +149,24 @@ impl Index {
         Ok(())
     }
 
-    /// Load an index snapshot from file.
-    /// Returns a new Index instance populated from the snapshot.
     pub fn load_snapshot(path: impl AsRef<Path>) -> Result<Self> {
         let file = File::open(path)?;
         let mut reader = BufReader::new(file);
 
-        // Read and verify magic
         let mut magic = [0u8; 8];
         reader.read_exact(&mut magic)?;
-        // Support both v2 (KVINDEX2) and v3 (KVINDEX3) formats
         let has_ttl = &magic == b"KVINDEX3";
         if &magic != b"KVINDEX2" && !has_ttl {
             return Err(crate::Error::Corrupted("Invalid snapshot magic".into()));
         }
 
-        // Read number of entries
         let mut num_entries_bytes = [0u8; 8];
         reader.read_exact(&mut num_entries_bytes)?;
         let num_entries = u64::from_le_bytes(num_entries_bytes);
 
         let mut index = Index::new();
 
-        // Read each entry
         for _ in 0..num_entries {
-            // Read key
             let mut key_len_bytes = [0u8; 4];
             reader.read_exact(&mut key_len_bytes)?;
             let key_len = u32::from_le_bytes(key_len_bytes) as usize;
@@ -212,7 +176,6 @@ impl Index {
             let key = String::from_utf8(key_bytes)
                 .map_err(|_| crate::Error::Corrupted("Invalid UTF-8 in key".into()))?;
 
-            // Read location
             let mut shard_bytes = [0u8; 8];
             reader.read_exact(&mut shard_bytes)?;
             let shard = u64::from_le_bytes(shard_bytes);
@@ -225,7 +188,6 @@ impl Index {
             reader.read_exact(&mut size_bytes)?;
             let size = u64::from_le_bytes(size_bytes);
 
-            // Read BLAKE3 hash
             let mut hash_len_bytes = [0u8; 4];
             reader.read_exact(&mut hash_len_bytes)?;
             let hash_len = u32::from_le_bytes(hash_len_bytes) as usize;
@@ -235,7 +197,6 @@ impl Index {
             let blake3 = String::from_utf8(hash_bytes)
                 .map_err(|_| crate::Error::Corrupted("Invalid UTF-8 in hash".into()))?;
 
-            // Read TTL if v3 format
             let expires_at = if has_ttl {
                 let mut expires_bytes = [0u8; 8];
                 reader.read_exact(&mut expires_bytes)?;
@@ -325,10 +286,8 @@ mod tests {
             },
         );
 
-        // Save
         index.save_snapshot(&snapshot_path).unwrap();
 
-        // Load
         let loaded = Index::load_snapshot(&snapshot_path).unwrap();
 
         assert_eq!(loaded.len(), 2);
@@ -347,7 +306,6 @@ mod tests {
     fn test_ttl_expiration() {
         let mut index = Index::new();
 
-        // Key with past expiration (already expired)
         let past_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -365,7 +323,6 @@ mod tests {
             },
         );
 
-        // Key with future expiration (not expired)
         let future_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -383,7 +340,6 @@ mod tests {
             },
         );
 
-        // Key with no expiration
         index.insert(
             "permanent_key".to_string(),
             BlobLocation {
@@ -395,17 +351,14 @@ mod tests {
             },
         );
 
-        // Check expiration status
         assert!(index.is_expired("expired_key"));
         assert!(!index.is_expired("valid_key"));
         assert!(!index.is_expired("permanent_key"));
 
-        // get_if_valid should not return expired keys
         assert!(index.get_if_valid("expired_key").is_none());
         assert!(index.get_if_valid("valid_key").is_some());
         assert!(index.get_if_valid("permanent_key").is_some());
 
-        // Cleanup should remove only expired keys
         let removed = index.cleanup_expired();
         assert_eq!(removed, 1);
         assert_eq!(index.len(), 2);

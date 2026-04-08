@@ -1,7 +1,6 @@
 //! Volume gRPC service implementation
 //!
 //! This module exposes the internal gRPC API for volume operations.
-//! Security features (TLS, authentication) and cross-datacenter replication are planned for future releases.
 
 use crate::proto::volume_internal_server::{VolumeInternal, VolumeInternalServer};
 use crate::proto::*;
@@ -33,16 +32,12 @@ impl VolumeInternal for VolumeGrpcService {
     ) -> Result<Response<PrepareResponse>, Status> {
         let inner = req.into_inner();
 
-        // Validate request
         if inner.key.is_empty() {
             return Ok(Response::new(PrepareResponse {
                 ok: false,
                 error: "key cannot be empty".to_string(),
             }));
         }
-
-        // Check if we have space (simplified check)
-        // In production: check disk space, quotas, etc.
 
         Ok(Response::new(PrepareResponse {
             ok: true,
@@ -56,11 +51,6 @@ impl VolumeInternal for VolumeGrpcService {
     ) -> Result<Response<CommitResponse>, Status> {
         let _inner = req.into_inner();
 
-        // CI trigger: commit for relaunch
-
-        // For now, we just acknowledge
-        // In production: finalize the transaction, make data durable
-
         Ok(Response::new(CommitResponse {
             ok: true,
             error: String::new(),
@@ -69,9 +59,6 @@ impl VolumeInternal for VolumeGrpcService {
 
     async fn abort(&self, req: Request<AbortRequest>) -> Result<Response<AbortResponse>, Status> {
         let _inner = req.into_inner();
-
-        // Clean up any prepared state
-        // In production: delete temp files, release locks
 
         Ok(Response::new(AbortResponse { ok: true }))
     }

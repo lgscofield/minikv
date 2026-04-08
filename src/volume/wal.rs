@@ -15,7 +15,6 @@ const WAL_MAGIC: [u8; 4] = [0x57, 0x41, 0x4C, 0x31]; // "WAL1"
 const OP_PUT: u8 = 1;
 const OP_DELETE: u8 = 2;
 
-/// WAL entry
 /// Represents a single operation in the log, either a write (Put) or a delete.
 #[derive(Debug, Clone)]
 pub struct WalEntry {
@@ -29,7 +28,6 @@ pub enum WalOp {
     Delete { key: String },
 }
 
-/// Write-Ahead Log
 /// Main WAL structure. Handles appending operations and syncing to disk.
 pub struct Wal {
     path: PathBuf,
@@ -39,12 +37,10 @@ pub struct Wal {
 }
 
 impl Wal {
-    /// Open or create WAL file.
     /// If the file exists, finds the last sequence number to continue appending.
     pub fn open(path: impl AsRef<Path>, sync_policy: WalSyncPolicy) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
 
-        // Create parent directory
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -55,7 +51,6 @@ impl Wal {
             .read(true)
             .open(&path)?;
 
-        // Find last sequence number by reading entire log
         let next_sequence = Self::find_last_sequence(&path)?;
 
         Ok(Self {
@@ -66,8 +61,6 @@ impl Wal {
         })
     }
 
-    /// Find the last sequence number in the WAL.
-    /// Used during WAL open to determine where to resume.
     fn find_last_sequence(path: &Path) -> Result<u64> {
         let file = match File::open(path) {
             Ok(f) => f,
@@ -91,8 +84,6 @@ impl Wal {
         Ok(max_seq.map(|s| s + 1).unwrap_or(0))
     }
 
-    /// Append a PUT operation to the WAL.
-    /// Returns the sequence number assigned to this operation.
     pub fn append_put(&mut self, key: &str, value: &[u8]) -> Result<u64> {
         let sequence = self.next_sequence;
         self.next_sequence += 1;
@@ -103,8 +94,6 @@ impl Wal {
         Ok(sequence)
     }
 
-    /// Append a DELETE operation to the WAL.
-    /// Returns the sequence number assigned to this operation.
     pub fn append_delete(&mut self, key: &str) -> Result<u64> {
         let sequence = self.next_sequence;
         self.next_sequence += 1;
@@ -115,8 +104,6 @@ impl Wal {
         Ok(sequence)
     }
 
-    /// Write an entry to the WAL file.
-    /// Handles serialization and CRC protection.
     fn write_entry(
         &mut self,
         sequence: u64,
@@ -127,7 +114,6 @@ impl Wal {
         let key_bytes = key.as_bytes();
         let val_bytes = value.unwrap_or(&[]);
 
-        // Write header
         self.writer.write_all(&WAL_MAGIC)?;
         self.writer.write_all(&sequence.to_le_bytes())?;
         self.writer.write_all(&[op])?;
@@ -136,13 +122,11 @@ impl Wal {
         self.writer
             .write_all(&(val_bytes.len() as u32).to_le_bytes())?;
 
-        // Write payload
         self.writer.write_all(key_bytes)?;
         if op == OP_PUT {
             self.writer.write_all(val_bytes)?;
         }
 
-        // Write checksum
         let mut checksum_data = Vec::new();
         checksum_data.extend_from_slice(&sequence.to_le_bytes());
         checksum_data.push(op);
@@ -159,7 +143,6 @@ impl Wal {
         Ok(())
     }
 
-    /// Sync based on policy
     fn maybe_sync(&mut self) -> Result<()> {
         match self.sync_policy {
             WalSyncPolicy::Always => {
@@ -174,7 +157,6 @@ impl Wal {
         Ok(())
     }
 
-    /// Replay WAL entries
     pub fn replay<F>(path: impl AsRef<Path>, mut callback: F) -> Result<()>
     where
         F: FnMut(WalEntry) -> Result<()>,
@@ -201,9 +183,7 @@ impl Wal {
         Ok(())
     }
 
-    /// Read a single entry from the WAL
     fn read_entry_internal<R: Read>(reader: &mut R) -> Result<Option<WalEntry>> {
-        // Read magic
         let mut magic = [0u8; 4];
         match reader.read_exact(&mut magic) {
             Ok(_) => {}
@@ -215,32 +195,26 @@ impl Wal {
             return Err(Error::Wal("Invalid WAL magic".into()));
         }
 
-        // Read sequence
         let mut seq_bytes = [0u8; 8];
         reader.read_exact(&mut seq_bytes)?;
         let sequence = u64::from_le_bytes(seq_bytes);
 
-        // Read op
         let mut op = [0u8; 1];
         reader.read_exact(&mut op)?;
 
-        // Read key length
         let mut key_len_bytes = [0u8; 4];
         reader.read_exact(&mut key_len_bytes)?;
         let key_len = u32::from_le_bytes(key_len_bytes) as usize;
 
-        // Read value length
         let mut val_len_bytes = [0u8; 4];
         reader.read_exact(&mut val_len_bytes)?;
         let val_len = u32::from_le_bytes(val_len_bytes) as usize;
 
-        // Read key
         let mut key_bytes = vec![0u8; key_len];
         reader.read_exact(&mut key_bytes)?;
         let key =
             String::from_utf8(key_bytes).map_err(|_| Error::Wal("Invalid UTF-8 in key".into()))?;
 
-        // Read value
         let value = if op[0] == OP_PUT {
             let mut val = vec![0u8; val_len];
             reader.read_exact(&mut val)?;
@@ -249,12 +223,10 @@ impl Wal {
             None
         };
 
-        // Read checksum
         let mut checksum_bytes = [0u8; 4];
         reader.read_exact(&mut checksum_bytes)?;
         let stored_checksum = u32::from_le_bytes(checksum_bytes);
 
-        // Verify checksum
         let mut checksum_data = Vec::new();
         checksum_data.extend_from_slice(&seq_bytes);
         checksum_data.push(op[0]);
@@ -285,7 +257,6 @@ impl Wal {
         }))
     }
 
-    /// Truncate WAL (after successful compaction)
     pub fn truncate(&mut self) -> Result<()> {
         self.writer.flush()?;
         drop(std::mem::replace(
@@ -293,7 +264,6 @@ impl Wal {
             BufWriter::new(File::open(&self.path)?),
         ));
 
-        // Truncate file
         let file = OpenOptions::new()
             .write(true)
             .truncate(true)
@@ -305,7 +275,6 @@ impl Wal {
         Ok(())
     }
 
-    /// Sync to disk
     pub fn sync(&mut self) -> Result<()> {
         self.writer.flush()?;
         self.writer.get_ref().sync_all()?;
@@ -337,7 +306,6 @@ mod tests {
             wal.sync().unwrap();
         }
 
-        // Replay
         let mut entries = Vec::new();
         Wal::replay(&wal_path, |entry| {
             entries.push(entry);
@@ -371,17 +339,14 @@ mod tests {
             wal.sync().unwrap();
         }
 
-        // Reopen and append more
         {
             let mut wal = Wal::open(&wal_path, WalSyncPolicy::Always).unwrap();
-            // After 2 entries (seq 0, 1), next_sequence should be 2
             assert_eq!(wal.next_sequence, 2);
             let seq = wal.append_put("key3", b"value3").unwrap();
             assert_eq!(seq, 2);
             wal.sync().unwrap();
         }
 
-        // Verify all entries
         let mut count = 0;
         Wal::replay(&wal_path, |_| {
             count += 1;

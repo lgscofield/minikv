@@ -7,65 +7,46 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-// ============================================================================
-// Custom Resource Definition Types
-// ============================================================================
-
-/// MiniKVCluster custom resource specification
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MiniKVClusterSpec {
-    /// Coordinator configuration
     pub coordinators: CoordinatorSpec,
 
-    /// Volume server configuration
     pub volumes: VolumeSpec,
 
-    /// Security configuration
     #[serde(default)]
     pub security: SecuritySpec,
 
-    /// Observability configuration
     #[serde(default)]
     pub observability: ObservabilitySpec,
 
-    /// Autoscaling configuration
     #[serde(default)]
     pub autoscaling: AutoscalingSpec,
 
-    /// Backup configuration
     #[serde(default)]
     pub backup: BackupSpec,
 
-    /// Geo-distribution configuration (v0.9.0)
     #[serde(default)]
     pub geo: GeoSpec,
 
-    /// Time-series optimization (v0.9.0)
     #[serde(default)]
     pub timeseries: TimeseriesSpec,
 
-    /// Data tiering configuration (v0.9.0)
     #[serde(default)]
     pub tiering: TieringSpec,
 }
 
-/// Coordinator node specification
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoordinatorSpec {
-    /// Number of coordinator replicas (should be odd for Raft)
     pub replicas: u32,
 
-    /// Container image
     #[serde(default = "default_coordinator_image")]
     pub image: String,
 
-    /// Resource requirements
     #[serde(default)]
     pub resources: ResourceRequirements,
 
-    /// Storage configuration
     #[serde(default)]
     pub storage: StorageSpec,
 }
@@ -74,26 +55,20 @@ fn default_coordinator_image() -> String {
     "ghcr.io/whispem/minikv-coord:latest".to_string()
 }
 
-/// Volume server specification
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VolumeSpec {
-    /// Number of volume server replicas
     pub replicas: u32,
 
-    /// Container image
     #[serde(default = "default_volume_image")]
     pub image: String,
 
-    /// Data replication factor
     #[serde(default = "default_replication_factor")]
     pub replication_factor: u32,
 
-    /// Resource requirements
     #[serde(default)]
     pub resources: ResourceRequirements,
 
-    /// Storage configuration
     #[serde(default)]
     pub storage: StorageSpec,
 }
@@ -106,7 +81,6 @@ fn default_replication_factor() -> u32 {
     3
 }
 
-/// Resource requirements
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ResourceRequirements {
     #[serde(default)]
@@ -115,7 +89,6 @@ pub struct ResourceRequirements {
     pub limits: ResourceList,
 }
 
-/// Resource list (CPU, memory)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceList {
     #[serde(default = "default_cpu_request")]
@@ -141,7 +114,6 @@ fn default_memory_request() -> String {
     "256Mi".to_string()
 }
 
-/// Storage specification
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageSpec {
@@ -164,7 +136,6 @@ fn default_storage_size() -> String {
     "10Gi".to_string()
 }
 
-/// Security configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SecuritySpec {
     #[serde(default)]
@@ -175,7 +146,6 @@ pub struct SecuritySpec {
     pub encryption: EncryptionSpec,
 }
 
-/// TLS configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TlsSpec {
@@ -185,7 +155,6 @@ pub struct TlsSpec {
     pub secret_name: String,
 }
 
-/// Authentication configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthSpec {
@@ -195,7 +164,6 @@ pub struct AuthSpec {
     pub admin_secret_name: String,
 }
 
-/// Encryption configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptionSpec {
@@ -205,7 +173,6 @@ pub struct EncryptionSpec {
     pub key_secret_name: String,
 }
 
-/// Observability configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ObservabilitySpec {
     #[serde(default)]
@@ -214,7 +181,6 @@ pub struct ObservabilitySpec {
     pub tracing: TracingSpec,
 }
 
-/// Metrics configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricsSpec {
     #[serde(default = "default_true")]
@@ -240,7 +206,6 @@ fn default_metrics_port() -> u16 {
     9090
 }
 
-/// Tracing configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TracingSpec {
     #[serde(default)]
@@ -249,7 +214,6 @@ pub struct TracingSpec {
     pub endpoint: String,
 }
 
-/// Autoscaling configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutoscalingSpec {
@@ -296,7 +260,6 @@ fn default_scale_down_stabilization() -> u32 {
     300
 }
 
-/// Backup configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BackupSpec {
     #[serde(default)]
@@ -317,7 +280,6 @@ fn default_backup_retention() -> u32 {
     7
 }
 
-/// Backup destination configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupDestinationSpec {
@@ -333,7 +295,6 @@ fn default_backup_type() -> String {
     "s3".to_string()
 }
 
-/// Geo-distribution configuration (v0.9.0)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GeoSpec {
@@ -347,7 +308,6 @@ pub struct GeoSpec {
     pub remote_regions: Vec<RemoteRegionSpec>,
 }
 
-/// Remote region configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteRegionSpec {
     pub name: String,
@@ -356,7 +316,6 @@ pub struct RemoteRegionSpec {
     pub priority: u32,
 }
 
-/// Time-series configuration (v0.9.0)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimeseriesSpec {
@@ -372,14 +331,12 @@ fn default_retention_days() -> u32 {
     30
 }
 
-/// Downsample rule for time-series data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownsampleRule {
     pub after: String,
     pub resolution: String,
 }
 
-/// Data tiering configuration (v0.9.0)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TieringSpec {
@@ -393,7 +350,6 @@ pub struct TieringSpec {
     pub cold_tier: TierConfig,
 }
 
-/// Tier configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TierConfig {
@@ -403,43 +359,30 @@ pub struct TierConfig {
     pub storage_class: String,
 }
 
-// ============================================================================
-// Cluster Status
-// ============================================================================
-
-/// MiniKVCluster status
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MiniKVClusterStatus {
-    /// Current phase
     pub phase: ClusterPhase,
 
-    /// Status conditions
     #[serde(default)]
     pub conditions: Vec<ClusterCondition>,
 
-    /// Coordinator status
     #[serde(default)]
     pub coordinator_status: ComponentStatus,
 
-    /// Volume status
     #[serde(default)]
     pub volume_status: VolumeStatus,
 
-    /// Service endpoints
     #[serde(default)]
     pub endpoints: ClusterEndpoints,
 
-    /// Current version
     #[serde(default)]
     pub version: String,
 
-    /// Last backup timestamp
     #[serde(default)]
     pub last_backup: Option<DateTime<Utc>>,
 }
 
-/// Cluster phase
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ClusterPhase {
     #[default]
@@ -451,7 +394,6 @@ pub enum ClusterPhase {
     Deleting,
 }
 
-/// Cluster condition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClusterCondition {
@@ -464,7 +406,6 @@ pub struct ClusterCondition {
     pub message: String,
 }
 
-/// Component status
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ComponentStatus {
     pub ready: u32,
@@ -473,7 +414,6 @@ pub struct ComponentStatus {
     pub leader: String,
 }
 
-/// Volume status with storage info
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VolumeStatus {
@@ -485,7 +425,6 @@ pub struct VolumeStatus {
     pub used_storage: String,
 }
 
-/// Cluster endpoints
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ClusterEndpoints {
     #[serde(default)]
@@ -496,35 +435,23 @@ pub struct ClusterEndpoints {
     pub metrics: String,
 }
 
-// ============================================================================
-// Controller Implementation
-// ============================================================================
-
-/// Kubernetes Operator Controller for MiniKV clusters
 pub struct MiniKVController {
-    /// Controller configuration
     config: ControllerConfig,
 
-    /// Watched clusters
     clusters: Arc<RwLock<BTreeMap<String, MiniKVClusterState>>>,
 }
 
-/// Controller configuration
 #[derive(Debug, Clone)]
 pub struct ControllerConfig {
     /// Namespace to watch (empty = all namespaces)
     pub watch_namespace: String,
 
-    /// Reconciliation interval in seconds
     pub reconcile_interval_secs: u64,
 
-    /// Leader election enabled
     pub leader_election: bool,
 
-    /// Metrics bind address
     pub metrics_bind_address: String,
 
-    /// Health probe bind address
     pub health_probe_bind_address: String,
 }
 
@@ -540,25 +467,17 @@ impl Default for ControllerConfig {
     }
 }
 
-/// Internal cluster state
 #[derive(Debug, Clone)]
 struct MiniKVClusterState {
-    /// Cluster name
     name: String,
-    /// Namespace
     namespace: String,
-    /// Spec
     spec: MiniKVClusterSpec,
-    /// Status
     status: MiniKVClusterStatus,
-    /// Generation
     generation: u64,
-    /// Last reconciled generation
     last_reconciled_generation: u64,
 }
 
 impl MiniKVController {
-    /// Create a new controller
     pub fn new(config: ControllerConfig) -> Self {
         Self {
             config,
@@ -566,7 +485,6 @@ impl MiniKVController {
         }
     }
 
-    /// Start the controller
     pub async fn run(&self) -> Result<()> {
         tracing::info!(
             "Starting MiniKV Kubernetes Operator (namespace: {})",
@@ -577,17 +495,10 @@ impl MiniKVController {
             }
         );
 
-        // In a real implementation, this would:
-        // 1. Set up leader election
-        // 2. Create Kubernetes client
-        // 3. Set up informers/watches for MiniKVCluster resources
-        // 4. Start reconciliation loop
-
         tracing::info!("Controller started successfully");
         Ok(())
     }
 
-    /// Reconcile a MiniKVCluster resource
     pub async fn reconcile(&self, name: &str, namespace: &str) -> Result<ReconcileAction> {
         tracing::info!("Reconciling MiniKVCluster {}/{}", namespace, name);
 
@@ -603,36 +514,28 @@ impl MiniKVController {
         };
         drop(clusters);
 
-        // Check if reconciliation is needed
         if cluster.generation == cluster.last_reconciled_generation {
             return Ok(ReconcileAction::RequeueAfter(
                 std::time::Duration::from_secs(self.config.reconcile_interval_secs),
             ));
         }
 
-        // Reconcile coordinators
         self.reconcile_coordinators(&cluster).await?;
 
-        // Reconcile volumes
         self.reconcile_volumes(&cluster).await?;
 
-        // Reconcile services
         self.reconcile_services(&cluster).await?;
 
-        // Reconcile config
         self.reconcile_config(&cluster).await?;
 
-        // Reconcile autoscaling
         if cluster.spec.autoscaling.enabled {
             self.reconcile_autoscaling(&cluster).await?;
         }
 
-        // Reconcile backups
         if cluster.spec.backup.enabled {
             self.reconcile_backup(&cluster).await?;
         }
 
-        // Update status
         self.update_status(name, namespace).await?;
 
         tracing::info!("Reconciliation complete for {}/{}", namespace, name);
@@ -642,7 +545,6 @@ impl MiniKVController {
         ))
     }
 
-    /// Reconcile coordinator StatefulSet
     async fn reconcile_coordinators(&self, cluster: &MiniKVClusterState) -> Result<()> {
         tracing::debug!(
             "Reconciling coordinators for {}/{}",
@@ -650,18 +552,11 @@ impl MiniKVController {
             cluster.name
         );
 
-        // Generate StatefulSet spec for coordinators
         let _sts_spec = self.generate_coordinator_statefulset(cluster);
-
-        // In a real implementation:
-        // 1. Get current StatefulSet
-        // 2. Compare with desired state
-        // 3. Apply changes if needed
 
         Ok(())
     }
 
-    /// Generate coordinator StatefulSet specification
     fn generate_coordinator_statefulset(&self, cluster: &MiniKVClusterState) -> StatefulSetSpec {
         let spec = &cluster.spec.coordinators;
         let name = format!("{}-coordinator", cluster.name);
@@ -692,7 +587,6 @@ impl MiniKVController {
         }
     }
 
-    /// Generate coordinator environment variables
     fn generate_coordinator_env(&self, cluster: &MiniKVClusterState) -> Vec<EnvVar> {
         let mut env = vec![
             EnvVar {
@@ -705,7 +599,6 @@ impl MiniKVController {
             },
         ];
 
-        // Add TLS config
         if cluster.spec.security.tls.enabled {
             env.push(EnvVar {
                 name: "MINIKV_TLS_ENABLED".to_string(),
@@ -713,7 +606,6 @@ impl MiniKVController {
             });
         }
 
-        // Add auth config
         if cluster.spec.security.authentication.enabled {
             env.push(EnvVar {
                 name: "MINIKV_AUTH_ENABLED".to_string(),
@@ -721,7 +613,6 @@ impl MiniKVController {
             });
         }
 
-        // Add geo config
         if cluster.spec.geo.enabled {
             env.push(EnvVar {
                 name: "MINIKV_GEO_REGION".to_string(),
@@ -736,7 +627,6 @@ impl MiniKVController {
         env
     }
 
-    /// Reconcile volume StatefulSet
     async fn reconcile_volumes(&self, cluster: &MiniKVClusterState) -> Result<()> {
         tracing::debug!(
             "Reconciling volumes for {}/{}",
@@ -749,7 +639,6 @@ impl MiniKVController {
         Ok(())
     }
 
-    /// Generate volume StatefulSet specification
     fn generate_volume_statefulset(&self, cluster: &MiniKVClusterState) -> StatefulSetSpec {
         let spec = &cluster.spec.volumes;
         let name = format!("{}-volume", cluster.name);
@@ -776,7 +665,6 @@ impl MiniKVController {
         }
     }
 
-    /// Generate volume environment variables
     fn generate_volume_env(&self, cluster: &MiniKVClusterState) -> Vec<EnvVar> {
         let mut env = vec![
             EnvVar {
@@ -793,7 +681,6 @@ impl MiniKVController {
             },
         ];
 
-        // Add tiering config
         if cluster.spec.tiering.enabled {
             env.push(EnvVar {
                 name: "MINIKV_TIERING_ENABLED".to_string(),
@@ -801,7 +688,6 @@ impl MiniKVController {
             });
         }
 
-        // Add timeseries config
         if cluster.spec.timeseries.enabled {
             env.push(EnvVar {
                 name: "MINIKV_TIMESERIES_ENABLED".to_string(),
@@ -816,7 +702,6 @@ impl MiniKVController {
         env
     }
 
-    /// Reconcile services
     async fn reconcile_services(&self, cluster: &MiniKVClusterState) -> Result<()> {
         tracing::debug!(
             "Reconciling services for {}/{}",
@@ -824,14 +709,9 @@ impl MiniKVController {
             cluster.name
         );
 
-        // Create headless service for StatefulSet DNS
-        // Create LoadBalancer/ClusterIP service for external access
-        // Create metrics service for Prometheus
-
         Ok(())
     }
 
-    /// Reconcile ConfigMap
     async fn reconcile_config(&self, cluster: &MiniKVClusterState) -> Result<()> {
         tracing::debug!(
             "Reconciling config for {}/{}",
@@ -844,7 +724,6 @@ impl MiniKVController {
         Ok(())
     }
 
-    /// Generate MiniKV configuration
     fn generate_config(&self, cluster: &MiniKVClusterState) -> String {
         let spec = &cluster.spec;
 
@@ -898,7 +777,6 @@ enabled = {tier_enabled}
         )
     }
 
-    /// Reconcile HorizontalPodAutoscaler
     async fn reconcile_autoscaling(&self, cluster: &MiniKVClusterState) -> Result<()> {
         tracing::debug!(
             "Reconciling autoscaling for {}/{}",
@@ -920,7 +798,6 @@ enabled = {tier_enabled}
         Ok(())
     }
 
-    /// Reconcile backup CronJob
     async fn reconcile_backup(&self, cluster: &MiniKVClusterState) -> Result<()> {
         tracing::debug!(
             "Reconciling backup for {}/{}",
@@ -941,7 +818,6 @@ enabled = {tier_enabled}
         Ok(())
     }
 
-    /// Update cluster status
     async fn update_status(&self, name: &str, namespace: &str) -> Result<()> {
         let mut clusters = self.clusters.write().await;
         let key = format!("{}/{}", namespace, name);
@@ -950,7 +826,6 @@ enabled = {tier_enabled}
             cluster.status.phase = ClusterPhase::Running;
             cluster.last_reconciled_generation = cluster.generation;
 
-            // Update conditions
             cluster.status.conditions.push(ClusterCondition {
                 r#type: "Ready".to_string(),
                 status: "True".to_string(),
@@ -963,7 +838,6 @@ enabled = {tier_enabled}
         Ok(())
     }
 
-    /// Generate standard labels
     fn generate_labels(&self, cluster_name: &str, component: &str) -> BTreeMap<String, String> {
         let mut labels = BTreeMap::new();
         labels.insert("app.kubernetes.io/name".to_string(), "minikv".to_string());
@@ -982,12 +856,8 @@ enabled = {tier_enabled}
         labels
     }
 
-    /// Handle cluster deletion
     pub async fn handle_delete(&self, name: &str, namespace: &str) -> Result<()> {
         tracing::info!("Handling deletion of {}/{}", namespace, name);
-
-        // Cleanup owned resources
-        // Remove finalizer
 
         let mut clusters = self.clusters.write().await;
         clusters.remove(&format!("{}/{}", namespace, name));
@@ -996,11 +866,6 @@ enabled = {tier_enabled}
     }
 }
 
-// ============================================================================
-// Internal Types for K8s Resource Generation
-// ============================================================================
-
-/// StatefulSet specification
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 struct StatefulSetSpec {
@@ -1015,7 +880,6 @@ struct StatefulSetSpec {
     ports: Vec<ContainerPort>,
 }
 
-/// Environment variable
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 struct EnvVar {
@@ -1023,7 +887,6 @@ struct EnvVar {
     value: String,
 }
 
-/// Container port
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 struct ContainerPort {
@@ -1031,7 +894,6 @@ struct ContainerPort {
     port: u16,
 }
 
-/// HPA specification
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 struct HpaSpec {
@@ -1045,7 +907,6 @@ struct HpaSpec {
     scale_down_stabilization_secs: u32,
 }
 
-/// CronJob specification
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 struct CronJobSpec {
@@ -1058,22 +919,13 @@ struct CronJobSpec {
     retention: u32,
 }
 
-/// Reconcile action
 #[derive(Debug, Clone)]
 pub enum ReconcileAction {
-    /// Continue reconciliation
     Continue,
-    /// Skip reconciliation
     Skip,
-    /// Requeue after duration
     RequeueAfter(std::time::Duration),
-    /// Requeue immediately
     Requeue,
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
 
 #[cfg(test)]
 mod tests {

@@ -11,30 +11,23 @@ impl Config {
     }
 }
 
-/// Configuration for minikv components
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// Global configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// Node ID (unique identifier)
     pub node_id: String,
 
-    /// Role (coordinator or volume)
     pub role: NodeRole,
 
-    /// Coordinator-specific config
     #[serde(skip_serializing_if = "Option::is_none")]
     pub coordinator: Option<CoordinatorConfig>,
 
-    /// Volume-specific config
     #[serde(skip_serializing_if = "Option::is_none")]
     pub volume: Option<VolumeConfig>,
 
-    /// Logging level
     #[serde(default = "default_log_level")]
     pub log_level: String,
 }
@@ -50,46 +43,34 @@ pub enum NodeRole {
     Volume,
 }
 
-/// Coordinator configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoordinatorConfig {
-    /// Bind address for HTTP API
     pub bind_addr: SocketAddr,
 
-    /// Bind address for internal gRPC
     pub grpc_addr: SocketAddr,
 
-    /// RocksDB path for metadata
     pub db_path: PathBuf,
 
-    /// Raft peers (other coordinators)
     pub peers: Vec<String>,
 
-    /// Replication factor
     #[serde(default = "default_replicas")]
     pub replicas: usize,
 
-    /// Raft election timeout
     #[serde(default = "default_election_timeout")]
     pub election_timeout_ms: u64,
 
-    /// Raft heartbeat interval
     #[serde(default = "default_heartbeat_interval")]
     pub heartbeat_interval_ms: u64,
 
-    /// Snapshot threshold (log entries before snapshot)
     #[serde(default = "default_snapshot_threshold")]
     pub snapshot_threshold: u64,
 
-    /// Number of shards for consistent hashing
     #[serde(default = "default_num_shards")]
     pub num_shards: u64,
 
-    /// TLS certificate path (PEM)
     #[serde(default)]
     pub tls_cert_path: Option<String>,
 
-    /// TLS private key path (PEM)
     #[serde(default)]
     pub tls_key_path: Option<String>,
 }
@@ -128,49 +109,36 @@ impl Default for CoordinatorConfig {
     }
 }
 
-/// Volume configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolumeConfig {
-    /// Bind address for HTTP API
     pub bind_addr: SocketAddr,
 
-    /// Bind address for internal gRPC
     pub grpc_addr: SocketAddr,
 
-    /// Data directory for blobs
     pub data_path: PathBuf,
 
-    /// WAL directory
     pub wal_path: PathBuf,
 
-    /// Coordinator addresses
     pub coordinators: Vec<String>,
 
-    /// Max blob size (bytes)
     #[serde(default = "default_max_blob_size")]
     pub max_blob_size: u64,
 
-    /// Compaction interval
     #[serde(default = "default_compaction_interval")]
     pub compaction_interval_secs: u64,
 
-    /// Compaction threshold (segments)
     #[serde(default = "default_compaction_threshold")]
     pub compaction_threshold: usize,
 
-    /// Heartbeat interval
     #[serde(default = "default_volume_heartbeat")]
     pub heartbeat_interval_secs: u64,
 
-    /// Enable bloom filters
     #[serde(default = "default_true")]
     pub enable_bloom: bool,
 
-    /// Enable index snapshots
     #[serde(default = "default_true")]
     pub enable_snapshots: bool,
 
-    /// WAL sync policy
     #[serde(default)]
     pub wal_sync: WalSyncPolicy,
 }
@@ -199,7 +167,6 @@ pub enum WalSyncPolicy {
     Always,
     /// fsync periodically
     Interval,
-    /// Never fsync (fastest, least durable)
     Never,
 }
 
@@ -222,22 +189,16 @@ impl Default for VolumeConfig {
     }
 }
 
-/// Runtime configuration
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
-    /// Request timeout
     pub request_timeout: Duration,
 
-    /// Connection timeout
     pub connect_timeout: Duration,
 
-    /// Max concurrent requests
     pub max_concurrent_requests: usize,
 
-    /// Retry attempts
     pub max_retries: usize,
 
-    /// Retry delay
     pub retry_delay: Duration,
 }
 
@@ -254,7 +215,6 @@ impl Default for RuntimeConfig {
 }
 
 impl Config {
-    /// Load from file
     #[allow(clippy::result_large_err)]
     pub fn from_file(path: impl AsRef<std::path::Path>) -> crate::Result<Self> {
         let content = std::fs::read_to_string(path)?;
@@ -263,7 +223,6 @@ impl Config {
         Ok(config)
     }
 
-    /// Save to file
     #[allow(clippy::result_large_err)]
     pub fn to_file(&self, path: impl AsRef<std::path::Path>) -> crate::Result<()> {
         let content = serde_json::to_string_pretty(self)
@@ -272,7 +231,6 @@ impl Config {
         Ok(())
     }
 
-    /// Validate configuration
     #[allow(clippy::result_large_err)]
     pub fn validate(&self) -> crate::Result<()> {
         if self.node_id.is_empty() {

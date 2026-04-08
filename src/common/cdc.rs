@@ -8,111 +8,81 @@ use std::collections::VecDeque;
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 
-/// CDC event representing a data change
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CDCEvent {
-    /// Event ID (UUID)
     pub id: String,
 
-    /// Sequence number for ordering
     pub sequence: u64,
 
-    /// Timestamp of the event
     pub timestamp: DateTime<Utc>,
 
-    /// Type of operation
     pub operation: CDCOperation,
 
-    /// Key that was modified
     pub key: String,
 
-    /// Value before the change (for updates and deletes)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub old_value: Option<Vec<u8>>,
 
-    /// Value after the change (for inserts and updates)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_value: Option<Vec<u8>>,
 
-    /// Tenant that owns the data
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tenant: Option<String>,
 
-    /// Additional metadata
     #[serde(default)]
     pub metadata: CDCMetadata,
 }
 
-/// CDC operation type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum CDCOperation {
-    /// New key inserted
     Insert,
-    /// Existing key updated
     Update,
-    /// Key deleted
     Delete,
-    /// Snapshot of all data
     Snapshot,
 }
 
-/// Additional metadata for CDC events
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CDCMetadata {
-    /// Source coordinator/volume ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_node: Option<String>,
 
-    /// Datacenter ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub datacenter: Option<String>,
 
-    /// Transaction ID (if part of a transaction)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction_id: Option<String>,
 
-    /// User/API key that made the change
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actor: Option<String>,
 
-    /// Custom tags
     #[serde(default)]
     pub tags: std::collections::HashMap<String, String>,
 }
 
-/// CDC configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CDCConfig {
-    /// Enable CDC
     #[serde(default = "default_true")]
     pub enabled: bool,
 
-    /// Buffer size for events
     #[serde(default = "default_buffer_size")]
     pub buffer_size: usize,
 
-    /// Batch size for sink delivery
     #[serde(default = "default_batch_size")]
     pub batch_size: usize,
 
-    /// Flush interval in milliseconds
     #[serde(default = "default_flush_interval")]
     pub flush_interval_ms: u64,
 
-    /// Sink configurations
     #[serde(default)]
     pub sinks: Vec<SinkConfig>,
 
-    /// Filter by operation types
     #[serde(default)]
     pub filter_operations: Vec<CDCOperation>,
 
-    /// Filter by key prefix
     #[serde(default)]
     pub filter_key_prefix: Option<String>,
 
-    /// Include old values in events
     #[serde(default = "default_true")]
     pub include_old_values: bool,
 }
@@ -148,11 +118,9 @@ impl Default for CDCConfig {
     }
 }
 
-/// Sink configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum SinkConfig {
-    /// Webhook sink - sends events to an HTTP endpoint
     Webhook {
         url: String,
         #[serde(default)]
@@ -163,7 +131,6 @@ pub enum SinkConfig {
         max_retries: u32,
     },
 
-    /// Kafka sink - sends events to a Kafka topic
     Kafka {
         brokers: Vec<String>,
         topic: String,
@@ -171,7 +138,6 @@ pub enum SinkConfig {
         client_id: Option<String>,
     },
 
-    /// File sink - appends events to a file
     File {
         path: String,
         #[serde(default)]
@@ -180,7 +146,6 @@ pub enum SinkConfig {
         max_files: Option<u32>,
     },
 
-    /// Memory sink - stores events in memory (for testing)
     Memory {
         #[serde(default = "default_memory_limit")]
         max_events: usize,
@@ -199,20 +164,15 @@ fn default_memory_limit() -> usize {
     1000
 }
 
-/// Trait for CDC sinks
 #[async_trait]
 pub trait CDCSink: Send + Sync {
-    /// Name of the sink
     fn name(&self) -> &str;
 
-    /// Send a batch of events
     async fn send(&self, events: Vec<CDCEvent>) -> Result<()>;
 
-    /// Check if the sink is healthy
     async fn health_check(&self) -> Result<bool>;
 }
 
-/// Webhook sink implementation
 pub struct WebhookSink {
     name: String,
     url: String,
@@ -289,7 +249,6 @@ impl CDCSink for WebhookSink {
     }
 
     async fn health_check(&self) -> Result<bool> {
-        // Try to connect to the webhook URL
         match self
             .client
             .head(&self.url)
@@ -303,7 +262,6 @@ impl CDCSink for WebhookSink {
     }
 }
 
-/// File sink implementation
 pub struct FileSink {
     name: String,
     #[allow(dead_code)]
@@ -359,7 +317,6 @@ impl CDCSink for FileSink {
     }
 }
 
-/// Memory sink implementation (for testing)
 pub struct MemorySink {
     name: String,
     events: Arc<RwLock<VecDeque<CDCEvent>>>,
@@ -406,7 +363,6 @@ impl CDCSink for MemorySink {
     }
 }
 
-/// CDC Manager - coordinates event capture and delivery
 pub struct CDCManager {
     config: CDCConfig,
     sinks: Vec<Arc<dyn CDCSink>>,
@@ -416,7 +372,6 @@ pub struct CDCManager {
 }
 
 impl CDCManager {
-    /// Create a new CDC manager
     pub fn new(config: CDCConfig) -> (Self, mpsc::Receiver<CDCEvent>) {
         let (event_tx, event_rx) = mpsc::channel(config.buffer_size);
 
@@ -431,12 +386,10 @@ impl CDCManager {
         (manager, event_rx)
     }
 
-    /// Add a sink
     pub fn add_sink(&mut self, sink: Arc<dyn CDCSink>) {
         self.sinks.push(sink);
     }
 
-    /// Create sinks from configuration
     pub fn create_sinks_from_config(&mut self) -> Result<()> {
         for sink_config in &self.config.sinks {
             let sink: Arc<dyn CDCSink> = match sink_config {
@@ -454,8 +407,6 @@ impl CDCManager {
                 SinkConfig::File { path, .. } => Arc::new(FileSink::new(path.clone())?),
                 SinkConfig::Memory { max_events } => Arc::new(MemorySink::new(*max_events)),
                 SinkConfig::Kafka { .. } => {
-                    // Kafka sink would require additional dependencies
-                    // For now, skip Kafka sinks
                     continue;
                 }
             };
@@ -464,23 +415,19 @@ impl CDCManager {
         Ok(())
     }
 
-    /// Generate next sequence number
     fn next_sequence(&self) -> u64 {
         let mut seq = self.sequence.write().unwrap();
         *seq += 1;
         *seq
     }
 
-    /// Check if event passes filters
     fn passes_filter(&self, event: &CDCEvent) -> bool {
-        // Check operation filter
         if !self.config.filter_operations.is_empty()
             && !self.config.filter_operations.contains(&event.operation)
         {
             return false;
         }
 
-        // Check key prefix filter
         if let Some(ref prefix) = self.config.filter_key_prefix {
             if !event.key.starts_with(prefix) {
                 return false;
@@ -490,7 +437,6 @@ impl CDCManager {
         true
     }
 
-    /// Capture an insert event
     pub async fn capture_insert(
         &self,
         key: &str,
@@ -524,7 +470,6 @@ impl CDCManager {
         Ok(())
     }
 
-    /// Capture an update event
     pub async fn capture_update(
         &self,
         key: &str,
@@ -563,7 +508,6 @@ impl CDCManager {
         Ok(())
     }
 
-    /// Capture a delete event
     pub async fn capture_delete(
         &self,
         key: &str,
@@ -601,7 +545,6 @@ impl CDCManager {
         Ok(())
     }
 
-    /// Flush events to all sinks
     pub async fn flush(&self) -> Result<()> {
         let events: Vec<CDCEvent> = {
             let mut buffer = self.buffer.write().unwrap();
@@ -621,12 +564,10 @@ impl CDCManager {
         Ok(())
     }
 
-    /// Get the current sequence number
     pub fn current_sequence(&self) -> u64 {
         *self.sequence.read().unwrap()
     }
 
-    /// Get health status of all sinks
     pub async fn health_check(&self) -> Vec<(String, bool)> {
         let mut results = vec![];
         for sink in &self.sinks {
@@ -637,11 +578,9 @@ impl CDCManager {
     }
 }
 
-/// Global CDC manager instance
 pub static CDC_MANAGER: once_cell::sync::Lazy<RwLock<Option<CDCManager>>> =
     once_cell::sync::Lazy::new(|| RwLock::new(None));
 
-/// Initialize the global CDC manager
 pub fn init_cdc(config: CDCConfig) -> mpsc::Receiver<CDCEvent> {
     let (mut manager, rx) = CDCManager::new(config);
     let _ = manager.create_sinks_from_config();
@@ -649,7 +588,6 @@ pub fn init_cdc(config: CDCConfig) -> mpsc::Receiver<CDCEvent> {
     rx
 }
 
-/// Get the global CDC manager
 pub fn get_cdc_manager() -> Option<std::sync::RwLockReadGuard<'static, Option<CDCManager>>> {
     let guard = CDC_MANAGER.read().unwrap();
     if guard.is_some() {

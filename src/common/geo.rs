@@ -7,14 +7,8 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::{Arc, RwLock};
 
-// ============================================================================
-// Configuration
-// ============================================================================
-
-/// Geo-partitioning configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeoConfig {
-    /// Enable geo-partitioning
     #[serde(default)]
     pub enabled: bool,
 
@@ -25,23 +19,18 @@ pub struct GeoConfig {
     #[serde(default)]
     pub local_zone: String,
 
-    /// Known regions
     #[serde(default)]
     pub regions: Vec<RegionConfig>,
 
-    /// Default region for new keys
     #[serde(default)]
     pub default_region: Option<String>,
 
-    /// Routing strategy
     #[serde(default)]
     pub routing: RoutingStrategy,
 
-    /// Enable geo-fencing (restrict data to specific regions)
     #[serde(default)]
     pub geo_fencing: bool,
 
-    /// Cross-region replication mode
     #[serde(default)]
     pub replication_mode: ReplicationMode,
 }
@@ -61,20 +50,16 @@ impl Default for GeoConfig {
     }
 }
 
-/// Region configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegionConfig {
     /// Region identifier (e.g., "us-east-1", "eu-west-1")
     pub id: String,
 
-    /// Human-readable name
     pub name: String,
 
-    /// Geographic location
     #[serde(default)]
     pub location: Option<GeoLocation>,
 
-    /// Coordinator endpoints in this region
     pub endpoints: Vec<String>,
 
     /// Is this the primary region?
@@ -85,12 +70,10 @@ pub struct RegionConfig {
     #[serde(default)]
     pub priority: u32,
 
-    /// Region-specific settings
     #[serde(default)]
     pub settings: RegionSettings,
 }
 
-/// Geographic location
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct GeoLocation {
     pub latitude: f64,
@@ -105,7 +88,6 @@ impl GeoLocation {
         }
     }
 
-    /// Calculate distance to another location in kilometers
     pub fn distance_km(&self, other: &GeoLocation) -> f64 {
         const EARTH_RADIUS_KM: f64 = 6371.0;
 
@@ -122,18 +104,14 @@ impl GeoLocation {
     }
 }
 
-/// Region-specific settings
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RegionSettings {
-    /// Read replicas in this region
     #[serde(default)]
     pub read_replicas: u32,
 
-    /// Write allowed to this region
     #[serde(default = "default_true")]
     pub write_enabled: bool,
 
-    /// Data residency compliance requirements
     #[serde(default)]
     pub compliance: Vec<String>,
 }
@@ -142,58 +120,40 @@ fn default_true() -> bool {
     true
 }
 
-/// Routing strategy for geo-distributed requests
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RoutingStrategy {
-    /// Route to nearest region based on latency
     #[default]
     LatencyBased,
 
-    /// Route to region based on key prefix
     KeyBased,
 
     /// Route based on client's geographic location
     GeoBased,
 
-    /// Round-robin across regions
     RoundRobin,
 
-    /// Always route to primary region
     PrimaryOnly,
 }
 
-/// Cross-region replication mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ReplicationMode {
-    /// Synchronous replication (wait for all regions)
     Sync,
 
-    /// Asynchronous replication (eventual consistency)
     #[default]
     Async,
 
-    /// Semi-synchronous (wait for at least one remote region)
     SemiSync,
 }
 
-// ============================================================================
-// Geo Router
-// ============================================================================
-
-/// Geo-aware request router
 pub struct GeoRouter {
     config: GeoConfig,
-    /// Region health status
     region_health: Arc<RwLock<HashMap<String, RegionHealth>>>,
-    /// Latency measurements
     latencies: Arc<RwLock<HashMap<String, LatencyStats>>>,
-    /// IP to location cache
     ip_location_cache: Arc<RwLock<HashMap<IpAddr, GeoLocation>>>,
 }
 
-/// Region health status
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegionHealth {
     pub region_id: String,
@@ -204,7 +164,6 @@ pub struct RegionHealth {
     pub error: Option<String>,
 }
 
-/// Latency statistics
 #[derive(Debug, Clone, Default)]
 pub struct LatencyStats {
     pub samples: Vec<f64>,
@@ -239,7 +198,6 @@ impl LatencyStats {
 }
 
 impl GeoRouter {
-    /// Create a new geo router
     pub fn new(config: GeoConfig) -> Self {
         Self {
             config,
@@ -249,7 +207,6 @@ impl GeoRouter {
         }
     }
 
-    /// Route a request to the appropriate region
     pub fn route(&self, request: &GeoRequest) -> Result<RoutingDecision> {
         if !self.config.enabled {
             return Ok(RoutingDecision {
@@ -268,12 +225,10 @@ impl GeoRouter {
         }
     }
 
-    /// Route based on latency measurements
     fn route_by_latency(&self, _request: &GeoRequest) -> Result<RoutingDecision> {
         let latencies = self.latencies.read().unwrap();
         let health = self.region_health.read().unwrap();
 
-        // Find healthy region with lowest latency
         let mut best_region = None;
         let mut best_latency = f64::MAX;
 
@@ -306,9 +261,7 @@ impl GeoRouter {
         }
     }
 
-    /// Route based on key prefix
     fn route_by_key(&self, request: &GeoRequest) -> Result<RoutingDecision> {
-        // Key format: region:actual_key (e.g., "us-east:user:123")
         if let Some(key) = &request.key {
             if let Some(region_prefix) = key.split(':').next() {
                 if let Some(region) = self.config.regions.iter().find(|r| r.id == region_prefix) {
@@ -321,7 +274,6 @@ impl GeoRouter {
             }
         }
 
-        // Fallback to default or local region
         let region = self
             .config
             .default_region
@@ -340,18 +292,15 @@ impl GeoRouter {
         let client_location = match &request.client_location {
             Some(loc) => *loc,
             None => {
-                // Try to get from IP
                 if let Some(ip) = &request.client_ip {
                     let cache = self.ip_location_cache.read().unwrap();
                     cache.get(ip).copied().unwrap_or(GeoLocation::new(0.0, 0.0))
                 } else {
-                    // Default to a central location
                     GeoLocation::new(0.0, 0.0)
                 }
             }
         };
 
-        // Find nearest region
         let mut nearest = None;
         let mut min_distance = f64::MAX;
 
@@ -379,7 +328,6 @@ impl GeoRouter {
         }
     }
 
-    /// Round-robin routing
     fn route_round_robin(&self, _request: &GeoRequest) -> Result<RoutingDecision> {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -412,7 +360,6 @@ impl GeoRouter {
         })
     }
 
-    /// Route to primary region only
     fn route_to_primary(&self, _request: &GeoRequest) -> Result<RoutingDecision> {
         let primary = self
             .config
@@ -435,15 +382,11 @@ impl GeoRouter {
         }
     }
 
-    /// Check if a key is allowed in a region (geo-fencing)
     pub fn check_geo_fence(&self, key: &str, region: &str) -> Result<bool> {
         if !self.config.geo_fencing {
             return Ok(true);
         }
 
-        // Check if key has region restriction metadata
-        // Format: __geo:region:key_pattern
-        // This is a simplified implementation
         if key.starts_with("__geo:") {
             let parts: Vec<&str> = key.splitn(3, ':').collect();
             if parts.len() >= 2 {
@@ -455,7 +398,6 @@ impl GeoRouter {
         Ok(true)
     }
 
-    /// Update region health
     pub fn update_health(
         &self,
         region_id: &str,
@@ -478,7 +420,6 @@ impl GeoRouter {
             },
         );
 
-        // Update latency stats
         if let Some(latency) = latency_ms {
             let mut latencies = self.latencies.write().unwrap();
             let stats = latencies.entry(region_id.to_string()).or_default();
@@ -486,23 +427,16 @@ impl GeoRouter {
         }
     }
 
-    /// Get health status for all regions
     pub fn get_health_status(&self) -> Vec<RegionHealth> {
         let health = self.region_health.read().unwrap();
         health.values().cloned().collect()
     }
 
-    /// Get the local region
     pub fn local_region(&self) -> &str {
         &self.config.local_region
     }
 
-    /// Check if request should use local read replica
     pub fn use_local_replica(&self, request: &GeoRequest) -> bool {
-        // Use local replica for reads if:
-        // 1. It's a read operation
-        // 2. Strong consistency is not required
-        // 3. Local region has read replicas
         if request.operation != GeoOperation::Read {
             return false;
         }
@@ -521,24 +455,16 @@ impl GeoRouter {
     }
 }
 
-/// Geo request information
 #[derive(Debug, Clone)]
 pub struct GeoRequest {
-    /// Operation type
     pub operation: GeoOperation,
-    /// Key (if applicable)
     pub key: Option<String>,
-    /// Client IP address
     pub client_ip: Option<IpAddr>,
-    /// Client location (if known)
     pub client_location: Option<GeoLocation>,
-    /// Required consistency level
     pub consistency: Option<Consistency>,
-    /// Preferred region (hint)
     pub preferred_region: Option<String>,
 }
 
-/// Operation type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GeoOperation {
     Read,
@@ -547,44 +473,30 @@ pub enum GeoOperation {
     Scan,
 }
 
-/// Consistency level
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Consistency {
-    /// Read from any replica
     Eventual,
-    /// Read from local region
     Local,
-    /// Read from primary
     Strong,
 }
 
-/// Routing decision
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoutingDecision {
-    /// Target region
     pub region: String,
-    /// Endpoints to connect to
     pub endpoints: Vec<String>,
-    /// Reason for this decision
     pub reason: String,
 }
-
-// ============================================================================
-// Global Instance
-// ============================================================================
 
 use once_cell::sync::Lazy;
 
 pub static GEO_ROUTER: Lazy<RwLock<Option<GeoRouter>>> = Lazy::new(|| RwLock::new(None));
 
-/// Initialize the geo router
 pub fn init_geo(config: GeoConfig) {
     let router = GeoRouter::new(config);
     let mut guard = GEO_ROUTER.write().unwrap();
     *guard = Some(router);
 }
 
-/// Get the geo router
 pub fn get_geo_router() -> Option<std::sync::RwLockReadGuard<'static, Option<GeoRouter>>> {
     let guard = GEO_ROUTER.read().ok()?;
     if guard.is_some() {
@@ -593,10 +505,6 @@ pub fn get_geo_router() -> Option<std::sync::RwLockReadGuard<'static, Option<Geo
         None
     }
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
 
 #[cfg(test)]
 mod tests {
@@ -640,7 +548,6 @@ mod tests {
         let london = GeoLocation::new(51.5074, -0.1278);
 
         let distance = nyc.distance_km(&london);
-        // NYC to London is approximately 5570 km
         assert!(distance > 5500.0 && distance < 5700.0);
     }
 
@@ -649,7 +556,6 @@ mod tests {
         let config = test_config();
         let router = GeoRouter::new(config);
 
-        // Client in Europe should route to EU region
         let request = GeoRequest {
             operation: GeoOperation::Read,
             key: Some("test-key".to_string()),

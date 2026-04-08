@@ -1,10 +1,7 @@
-// k6 scenario: Write-heavy workload (90% writes, 10% reads)
-
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Rate, Trend, Counter } from 'k6/metrics';
 
-// Custom metrics
 const writeSuccess = new Rate('write_success');
 const readSuccess = new Rate('read_success');
 const writeLatency = new Trend('write_latency');
@@ -12,14 +9,14 @@ const readLatency = new Trend('read_latency');
 const bytesWritten = new Counter('bytes_written');
 
 const BASE_URL = __ENV.BASE_URL || 'http://127.0.0.1:5000';
-const OBJECT_SIZE = parseInt(__ENV.OBJECT_SIZE || '1048576'); // 1 MB
-const WRITE_RATIO = 0.9; // 90% writes
+const OBJECT_SIZE = parseInt(__ENV.OBJECT_SIZE || '1048576');
+const WRITE_RATIO = 0.9;
 
 export let options = {
     stages: [
-        { duration: '30s', target: 10 },  // Ramp up
-        { duration: '2m', target: 50 },   // Steady state
-        { duration: '30s', target: 0 },   // Ramp down
+        { duration: '30s', target: 10 },
+        { duration: '2m', target: 50 },
+        { duration: '30s', target: 0 },
     ],
     thresholds: {
         'write_success': ['rate>0.85'],
@@ -44,7 +41,6 @@ export default function () {
     const shouldWrite = Math.random() < WRITE_RATIO;
     
     if (shouldWrite) {
-        // WRITE
         const key = `write-heavy-${__VU}-${__ITER}`;
         const data = generateData(OBJECT_SIZE);
         
@@ -66,7 +62,6 @@ export default function () {
             writtenKeys.push(key);
         }
     } else {
-        // READ (from previously written keys)
         if (writtenKeys.length > 0) {
             const key = writtenKeys[Math.floor(Math.random() * writtenKeys.length)];
             

@@ -102,7 +102,6 @@ async fn test_s3_put_get() {
         eprintln!("Skipping test_s3_put_get: CARGO_BIN_EXE_minikv-coord not set");
         return;
     }
-    // Dynamic ports
     let coord_http = get_free_port();
     let coord_grpc = get_free_port();
     let vol_http = get_free_port();
@@ -111,13 +110,11 @@ async fn test_s3_put_get() {
     let mut coord = start_coord(coord_http, coord_grpc);
     let mut volume = start_volume(vol_http, vol_grpc, coord_http);
 
-    // Wait until the S3 endpoint is ready (404 or 200)
     let s3_url = format!("http://127.0.0.1:{}/s3/testbucket/hello.txt", coord_http);
     wait_for_endpoint(&mut [&mut coord, &mut volume], &s3_url).await;
 
     let client = Client::new();
     let data = b"Hello, S3!";
-    // PUT
     let put_resp = client
         .put(&s3_url)
         .body(data.as_ref())
@@ -125,13 +122,11 @@ async fn test_s3_put_get() {
         .await
         .unwrap();
     assert!(put_resp.status().is_success(), "PUT failed: {:?}", put_resp);
-    // GET
     let get_resp = client.get(&s3_url).send().await.unwrap();
     assert!(get_resp.status().is_success(), "GET failed: {:?}", get_resp);
     let body = get_resp.bytes().await.unwrap();
     assert_eq!(body.as_ref(), data, "GET body mismatch");
 
-    // Stop the servers
     let _ = coord.kill();
     let _ = coord.wait();
     let _ = volume.kill();

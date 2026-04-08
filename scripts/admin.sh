@@ -9,7 +9,7 @@ COMMAND="${1:-help}"
 case "$COMMAND" in
     health)
         echo "Checking cluster health..."
-        curl -s http://localhost:5000/health
+        curl -s http://localhost:5000/health/live
         ;;
     rebalance)
         echo "Triggering auto-rebalancing..."

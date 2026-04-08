@@ -1,0 +1,6 @@
+apiVersion: v2
+name: minikv
+description: Helm chart for minikv coordinator and volume nodes
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

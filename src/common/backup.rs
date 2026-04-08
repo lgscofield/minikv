@@ -8,119 +8,83 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Backup type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BackupType {
-    /// Full backup - complete snapshot
     Full,
-    /// Incremental backup - only changes since last backup
     Incremental,
 }
 
-/// Backup status
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BackupStatus {
-    /// Backup is in progress
     InProgress,
-    /// Backup completed successfully
     Completed,
-    /// Backup failed
     Failed,
-    /// Backup was cancelled
     Cancelled,
 }
 
-/// Backup manifest - metadata about a backup
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupManifest {
-    /// Unique backup ID
     pub id: String,
 
-    /// Backup type
     pub backup_type: BackupType,
 
-    /// Status
     pub status: BackupStatus,
 
-    /// Start time
     pub started_at: DateTime<Utc>,
 
-    /// End time
     pub completed_at: Option<DateTime<Utc>>,
 
-    /// Total size in bytes
     pub size_bytes: u64,
 
-    /// Number of keys backed up
     pub key_count: u64,
 
-    /// Checksum of the backup
     pub checksum: String,
 
-    /// Parent backup ID (for incremental backups)
     pub parent_id: Option<String>,
 
-    /// WAL sequence number at backup time
     pub wal_sequence: u64,
 
-    /// Data files included
     pub data_files: Vec<BackupFile>,
 
-    /// Backup configuration used
     pub config: BackupConfig,
 
-    /// Additional metadata
     pub metadata: HashMap<String, String>,
 }
 
-/// Information about a single file in the backup
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupFile {
-    /// Relative path within backup
     pub path: String,
 
-    /// File size in bytes
     pub size: u64,
 
-    /// SHA256 checksum
     pub checksum: String,
 
-    /// Whether file is encrypted
     pub encrypted: bool,
 
-    /// Whether file is compressed
     pub compressed: bool,
 }
 
-/// Backup configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupConfig {
-    /// Backup destination
     pub destination: BackupDestination,
 
-    /// Enable compression
     #[serde(default = "default_true")]
     pub compress: bool,
 
-    /// Enable encryption
     #[serde(default)]
     pub encrypt: bool,
 
-    /// Encryption key (if encrypting)
     #[serde(skip_serializing)]
     pub encryption_key: Option<String>,
 
-    /// Include WAL files
     #[serde(default = "default_true")]
     pub include_wal: bool,
 
-    /// Parallel workers for backup
     #[serde(default = "default_workers")]
     pub parallel_workers: usize,
 
-    /// Chunk size for data files (bytes)
     #[serde(default = "default_chunk_size")]
     pub chunk_size: usize,
 }
@@ -153,14 +117,13 @@ impl Default for BackupConfig {
     }
 }
 
-/// Backup destination
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum BackupDestination {
-    /// Local filesystem
-    Local { path: String },
+    Local {
+        path: String,
+    },
 
-    /// S3-compatible storage
     S3 {
         bucket: String,
         prefix: Option<String>,
@@ -169,76 +132,54 @@ pub enum BackupDestination {
     },
 }
 
-/// Restore configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RestoreConfig {
-    /// Backup ID to restore from
     pub backup_id: String,
 
-    /// Source location
     pub source: BackupDestination,
 
-    /// Target data directory
     pub target_path: String,
 
-    /// Decryption key (if backup is encrypted)
     #[serde(skip_serializing)]
     pub decryption_key: Option<String>,
 
-    /// Restore to specific point in time (if available)
     pub point_in_time: Option<DateTime<Utc>>,
 
-    /// Parallel workers for restore
     #[serde(default = "default_workers")]
     pub parallel_workers: usize,
 
-    /// Verify checksums during restore
     #[serde(default = "default_true")]
     pub verify_checksums: bool,
 }
 
-/// Progress information for backup/restore operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupProgress {
-    /// Operation ID
     pub id: String,
 
-    /// Current phase
     pub phase: String,
 
-    /// Total bytes to process
     pub total_bytes: u64,
 
-    /// Bytes processed so far
     pub processed_bytes: u64,
 
-    /// Percentage complete
     pub percent_complete: f64,
 
-    /// Estimated time remaining (seconds)
     pub eta_seconds: Option<u64>,
 
-    /// Current rate (bytes/second)
     pub rate_bytes_per_sec: u64,
 
-    /// Errors encountered
     pub errors: Vec<String>,
 }
 
-/// Backup manager - coordinates backup and restore operations
 pub struct BackupManager {
-    /// Active backups
     active_backups: Arc<RwLock<HashMap<String, BackupProgress>>>,
 
-    /// Completed backup manifests
     manifests: Arc<RwLock<Vec<BackupManifest>>>,
 
-    /// Base backup path
     backup_path: PathBuf,
 }
 
 impl BackupManager {
-    /// Create a new backup manager
     pub fn new(backup_path: impl AsRef<Path>) -> Self {
         Self {
             active_backups: Arc::new(RwLock::new(HashMap::new())),
@@ -247,7 +188,6 @@ impl BackupManager {
         }
     }
 
-    /// Start a new backup
     pub async fn start_backup(
         &self,
         config: BackupConfig,
@@ -275,7 +215,6 @@ impl BackupManager {
             .await
             .insert(backup_id.clone(), progress);
 
-        // Create backup directory
         let backup_dir = self.backup_path.join(&backup_id);
         tokio::fs::create_dir_all(&backup_dir)
             .await
@@ -295,7 +234,6 @@ impl BackupManager {
                 .map_err(|e| Error::Other(format!("Failed to create wal directory: {}", e)))?;
         }
 
-        // Create initial manifest
         let manifest = BackupManifest {
             id: backup_id.clone(),
             backup_type,
@@ -312,7 +250,6 @@ impl BackupManager {
             metadata: HashMap::new(),
         };
 
-        // Save manifest
         let manifest_path = backup_dir.join("manifest.json");
         let manifest_json = serde_json::to_string_pretty(&manifest)
             .map_err(|e| Error::Other(format!("Failed to serialize manifest: {}", e)))?;
@@ -325,14 +262,12 @@ impl BackupManager {
         Ok(backup_id)
     }
 
-    /// Update backup progress
     pub async fn update_progress(&self, backup_id: &str, update: impl FnOnce(&mut BackupProgress)) {
         if let Some(progress) = self.active_backups.write().await.get_mut(backup_id) {
             update(progress);
         }
     }
 
-    /// Complete a backup
     pub async fn complete_backup(
         &self,
         backup_id: &str,
@@ -341,7 +276,6 @@ impl BackupManager {
         checksum: String,
         data_files: Vec<BackupFile>,
     ) -> Result<()> {
-        // Update manifest
         let mut manifests = self.manifests.write().await;
         if let Some(manifest) = manifests.iter_mut().find(|m| m.id == backup_id) {
             manifest.status = BackupStatus::Completed;
@@ -351,7 +285,6 @@ impl BackupManager {
             manifest.checksum = checksum;
             manifest.data_files = data_files;
 
-            // Save updated manifest
             let manifest_path = self.backup_path.join(backup_id).join("manifest.json");
             let manifest_json = serde_json::to_string_pretty(manifest)
                 .map_err(|e| Error::Other(format!("Failed to serialize manifest: {}", e)))?;
@@ -360,13 +293,11 @@ impl BackupManager {
                 .map_err(|e| Error::Other(format!("Failed to write manifest: {}", e)))?;
         }
 
-        // Remove from active backups
         self.active_backups.write().await.remove(backup_id);
 
         Ok(())
     }
 
-    /// Fail a backup
     pub async fn fail_backup(&self, backup_id: &str, error: &str) -> Result<()> {
         let mut manifests = self.manifests.write().await;
         if let Some(manifest) = manifests.iter_mut().find(|m| m.id == backup_id) {
@@ -382,17 +313,14 @@ impl BackupManager {
         Ok(())
     }
 
-    /// Get backup progress
     pub async fn get_progress(&self, backup_id: &str) -> Option<BackupProgress> {
         self.active_backups.read().await.get(backup_id).cloned()
     }
 
-    /// List all backups
     pub async fn list_backups(&self) -> Vec<BackupManifest> {
         self.manifests.read().await.clone()
     }
 
-    /// Get a specific backup manifest
     pub async fn get_backup(&self, backup_id: &str) -> Option<BackupManifest> {
         self.manifests
             .read()
@@ -402,9 +330,7 @@ impl BackupManager {
             .cloned()
     }
 
-    /// Delete a backup
     pub async fn delete_backup(&self, backup_id: &str) -> Result<()> {
-        // Remove from disk
         let backup_dir = self.backup_path.join(backup_id);
         if backup_dir.exists() {
             tokio::fs::remove_dir_all(&backup_dir)
@@ -412,13 +338,11 @@ impl BackupManager {
                 .map_err(|e| Error::Other(format!("Failed to delete backup: {}", e)))?;
         }
 
-        // Remove from manifests
         self.manifests.write().await.retain(|m| m.id != backup_id);
 
         Ok(())
     }
 
-    /// Start a restore operation
     pub async fn start_restore(&self, config: RestoreConfig) -> Result<String> {
         let restore_id = format!("restore-{}", Utc::now().format("%Y%m%d-%H%M%S"));
 
@@ -438,7 +362,6 @@ impl BackupManager {
             .await
             .insert(restore_id.clone(), progress);
 
-        // Verify backup exists
         let backup_dir = self.backup_path.join(&config.backup_id);
         if !backup_dir.exists() {
             return Err(Error::Other(format!(
@@ -447,7 +370,6 @@ impl BackupManager {
             )));
         }
 
-        // Load manifest
         let manifest_path = backup_dir.join("manifest.json");
         let manifest_json = tokio::fs::read_to_string(&manifest_path)
             .await
@@ -462,20 +384,16 @@ impl BackupManager {
             )));
         }
 
-        // Verify checksum if required
         if config.verify_checksums {
             self.update_progress(&restore_id, |p| {
                 p.phase = "verifying checksums".to_string();
             })
             .await;
-
-            // TODO: Implement checksum verification
         }
 
         Ok(restore_id)
     }
 
-    /// Load manifests from disk on startup
     pub async fn load_manifests(&self) -> Result<()> {
         if !self.backup_path.exists() {
             return Ok(());
@@ -530,11 +448,9 @@ impl BackupType {
     }
 }
 
-/// Global backup manager instance
 pub static BACKUP_MANAGER: once_cell::sync::Lazy<RwLock<Option<BackupManager>>> =
     once_cell::sync::Lazy::new(|| RwLock::new(None));
 
-/// Initialize the global backup manager
 pub async fn init_backup(backup_path: impl AsRef<Path>) -> Result<()> {
     let manager = BackupManager::new(backup_path);
     manager.load_manifests().await?;
@@ -542,7 +458,6 @@ pub async fn init_backup(backup_path: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
-/// Get the global backup manager
 pub async fn get_backup_manager(
 ) -> Option<tokio::sync::RwLockReadGuard<'static, Option<BackupManager>>> {
     let guard = BACKUP_MANAGER.read().await;

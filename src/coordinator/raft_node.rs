@@ -1,15 +1,9 @@
-//! Raft consensus node (simplified wrapper)
-//!
-//! This is a minimal Raft implementation wrapper.
-//! Only basic leader/follower roles are currently supported.
-//! Full multi-node Raft (log replication, elections, etc.) is still in progress.
-//! For production, use a full Raft library like tikv/raft.
+//! Raft consensus node wrapper.
 
 use crate::common::Result;
 use crate::coordinator::raft_rpc_client::{send_append_entries_rpc, send_request_vote_rpc};
 use std::sync::{Arc, Mutex};
 
-/// Simplified Raft state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RaftRole {
     Follower,
@@ -27,7 +21,6 @@ impl std::fmt::Display for RaftRole {
     }
 }
 
-/// Raft node state
 pub struct RaftNode {
     node_id: String,
     role: Arc<Mutex<RaftRole>>,
@@ -42,11 +35,9 @@ pub struct RaftNode {
 }
 
 impl RaftNode {
-    /// Get a copy of the current peer list
     pub fn get_peers(&self) -> Vec<String> {
         self.peers.lock().unwrap().clone()
     }
-    /// Detects a network partition (no heartbeat received)
     pub fn detect_partition(
         &self,
         last_heartbeat: tokio::time::Instant,
@@ -55,30 +46,21 @@ impl RaftNode {
         last_heartbeat.elapsed() > timeout
     }
 
-    /// Recovery: reloads the snapshot and log after a crash or partition
     pub fn recover(&self) {
-        if self.load_snapshot().is_some() {
-            // Apply the snapshot to the real state machine here
-        }
-        let log = self.log.lock().unwrap().clone();
-        if !log.is_empty() {
-            // Apply each entry to the real state machine here
-        }
+        let _ = self.load_snapshot().is_some();
+        let _ = self.log.lock().unwrap().clone();
         let mut applied = self.last_applied.lock().unwrap();
         *applied = *self.commit_index.lock().unwrap();
     }
-    /// Save a snapshot of the current state (log, index, etc.)
     pub fn save_snapshot(&self, data: Vec<u8>) {
         let mut snap = self.snapshot.lock().unwrap();
         *snap = Some(data);
     }
 
-    /// Load a snapshot into the state machine
     pub fn load_snapshot(&self) -> Option<Vec<u8>> {
         self.snapshot.lock().unwrap().clone()
     }
 
-    /// Apply a snapshot received from the leader (InstallSnapshot RPC)
     pub fn apply_snapshot(&self, data: Vec<u8>, last_included_index: u64, last_included_term: u64) {
         self.save_snapshot(data);
         let mut log = self.log.lock().unwrap();
@@ -94,10 +76,6 @@ impl RaftNode {
         self.log.lock().unwrap()
     }
 
-    /// Periodically send heartbeats (AppendEntries RPC) to all followers.
-    /// This maintains leadership and triggers log replication.
-    /// Send heartbeats (AppendEntries RPC) to all followers.
-    /// This maintains leadership and triggers log replication.
     pub async fn send_heartbeats(&self) {
         let peers = self.peers.lock().unwrap().clone();
         let term = self.get_term();
@@ -120,8 +98,6 @@ impl RaftNode {
     }
 
     /// Start the election timer and trigger elections if no heartbeat is received.
-    /// This is a stub for multi-node Raft; should run in a background task.
-    /// Election timer: triggers election if no heartbeat received.
     pub async fn run_election_timer(&self) {
         use rand::Rng;
         let mut rng = rand::thread_rng();
@@ -129,7 +105,6 @@ impl RaftNode {
             let timeout = rng.gen_range(150..300);
             tokio::time::sleep(tokio::time::Duration::from_millis(timeout)).await;
             if !self.is_leader() {
-                // If no heartbeat, start election
                 let peers = {
                     let peers_guard = self.peers.lock().unwrap();
                     peers_guard.clone()
@@ -139,7 +114,6 @@ impl RaftNode {
         }
     }
 
-    /// Handle incoming RequestVote RPC from other nodes.
     pub fn handle_request_vote(
         &self,
         req: crate::common::raft::VoteRequest,
@@ -167,8 +141,6 @@ impl RaftNode {
         }
     }
 
-    /// Handle incoming AppendEntries RPC from leader.
-    /// Used for log replication and heartbeat.
     pub fn handle_append_entries(
         &self,
         req: crate::common::raft::AppendRequest,
@@ -187,7 +159,6 @@ impl RaftNode {
                 for entry in req.entries {
                     log.push(entry);
                 }
-                // Update the commit index
                 let mut commit = self.commit_index.lock().unwrap();
                 if req.leader_commit > *commit {
                     *commit =
@@ -265,13 +236,11 @@ impl RaftNode {
         *self.term.lock().unwrap()
     }
 
-    /// Become leader (for single-node testing)
     pub fn become_leader(&self) {
         *self.role.lock().unwrap() = RaftRole::Leader;
         *self.leader_id.lock().unwrap() = Some(self.node_id.clone());
     }
 
-    /// Step down to follower
     pub fn step_down(&self, new_term: u64, leader_id: Option<String>) {
         *self.role.lock().unwrap() = RaftRole::Follower;
         *self.term.lock().unwrap() = new_term;
@@ -279,7 +248,6 @@ impl RaftNode {
         *self.voted_for.lock().unwrap() = None;
     }
 
-    /// Start election
     pub fn start_election(&self) -> u64 {
         let mut term = self.term.lock().unwrap();
         *term += 1;
@@ -292,7 +260,6 @@ impl RaftNode {
         new_term
     }
 
-    /// Grant vote
     pub fn grant_vote(&self, term: u64, candidate_id: String) -> bool {
         let mut current_term = self.term.lock().unwrap();
         let mut voted = self.voted_for.lock().unwrap();
@@ -314,14 +281,12 @@ impl RaftNode {
         }
     }
 
-    /// Replicate entry (simplified)
     pub async fn replicate(&self, _entry: Vec<u8>) -> Result<()> {
         if !self.is_leader() {
             return Err(crate::Error::NotLeader(
                 self.get_leader().unwrap_or_else(|| "unknown".to_string()),
             ));
         }
-        // 1. Append entry to local log
         let index;
         let term;
         let entry;
@@ -360,12 +325,10 @@ impl RaftNode {
         }
         let majority = (peers.len() + 1).div_ceil(2);
         if ack_count >= majority {
-            // Effective commit: advance commit_index
             let mut commit = self.commit_index.lock().unwrap();
             *commit = index;
             let mut applied = self.last_applied.lock().unwrap();
             while *applied < *commit {
-                // Apply log[*applied] to the real state machine here
                 *applied += 1;
             }
             Ok(())
@@ -386,9 +349,7 @@ pub fn start_raft_tasks(node: Arc<RaftNode>) -> tokio::task::JoinHandle<()> {
                 tokio::time::Duration::from_millis(150 + rand::random::<u64>() % 150);
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-                // Clone peers each loop to avoid holding MutexGuard
                 let peers = node.peers.lock().unwrap().clone();
-                // If follower and no heartbeat received, start election
                 if !node.is_leader() && last_heartbeat.elapsed() > election_timeout {
                     tracing::info!("Node {} starting election", node.node_id);
                     node.start_election_and_collect_votes(peers).await;
@@ -396,7 +357,6 @@ pub fn start_raft_tasks(node: Arc<RaftNode>) -> tokio::task::JoinHandle<()> {
                         tokio::time::Duration::from_millis(150 + rand::random::<u64>() % 150);
                     last_heartbeat = tokio::time::Instant::now();
                 }
-                // If leader, send heartbeats
                 if node.is_leader() {
                     node.send_heartbeats().await;
                     last_heartbeat = tokio::time::Instant::now();

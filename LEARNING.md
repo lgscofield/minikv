@@ -1,16 +1,15 @@
 # Learning Rust: My Journey from Literature to Distributed Systems
 
-*Hi, I’m Emilie (but everyone calls me Em’).  
-Here’s how I went from literature and languages to building real systems with Rust, starting (almost) from scratch.*
+*Hi, I’m Emilie (Em'). This document summarizes how I moved from literature and languages to systems programming with Rust, then into formal data science studies, starting almost from scratch.*
 
 ---
 
 ## Where I Come From
 
-Before 2025, my world was literature, linguistics, and foreign languages—not computers.  
-When I saw “code” it looked like mysterious acronyms and a tangle of semicolons!
+Before 2025, my world was literature, linguistics, and foreign languages, not computers.  
+When I first saw code, it looked like a tangle of acronyms and semicolons.
 
-But curiosity (and maybe a hint of madness) pushed me to give programming a real shot.
+Curiosity pushed me to give programming a serious try.
 
 ---
 
@@ -18,18 +17,18 @@ But curiosity (and maybe a hint of madness) pushed me to give programming a real
 
 **January/February 2025: I joined the Apple Foundation Program (AFP).**  
 My first real encounter with code: Swift, UI/UX, Xcode, iOS apps.  
-Everything felt visual and playful—constructing, clicking, deploying.  
-Suddenly, variables, loops, functions started to make sense, almost like learning a new language *to make things* instead of just analyzing them.
+Everything felt visual and concrete: constructing, testing, deploying.  
+Variables, loops, and functions started to make sense, like learning a new language to build things rather than only analyze them.
 
-But most importantly: *I realized I could actually learn to code.*
+Most importantly, I realized I could learn to code.
 
 ---
 
 ## Spring–Summer 2025: Learning on My Own
 
-After the AFP, I kept tinkering with Swift projects on my own—just for fun, but really leveling up my logic and creativity.  
-Bit by bit, the basics settled in, and I chased the thrill of “it works!”  
-Still, one big question circled in my mind: *What really happens behind the scenes?*  
+After the AFP, I kept building Swift projects on my own.  
+Bit by bit, the basics became clearer.  
+One question kept coming back: *What really happens behind the scenes?*  
 What do computers do with memory and files? How do real systems work?
 
 ---
@@ -37,16 +36,17 @@ What do computers do with memory and files? How do real systems work?
 ## Autumn 2025: The Leap Into Rust
 
 **Timeline:**
-- **Started Rust:** October 27, 2025 (at exactly 00:27 UTC+1 I ran my first "Hello World" in Rust—a super basic program, but it was magic)
+- **Started Rust:** October 27, 2025 (at 00:27 UTC+1 I ran my first "Hello World" in Rust)
 - **Shipped mini-kvstore-v2:** November 21, 2025
 - **Released minikv (distributed):** December 2025 (`v0.3.0` on December 22, then `v0.4.0` on December 31 with the first real admin dashboard and S3 API)
+- **Started Data Science program at AMSE:** April 2, 2026 (Aix-Marseille School of Economics)
 
 After hearing:
 - “Rust is way too hard.”
 - “Beware the borrow checker!”
 - “It’s not for beginners.”
 
-… I had zero formal tech background, but I wanted to *really* learn how systems worked and challenge myself with “low level” code.
+I had no formal tech background, but I wanted to understand how systems worked and challenge myself with low-level code.
 
 ---
 
@@ -55,7 +55,7 @@ After hearing:
 - **The compiler is strict but a true teacher:** error messages are detailed, sometimes even confessional—pointing to a solution.
 - **Ownership and borrowing:** I thought I got “ownership” from literature, but Rust forces you to *internalize* it.
 - **Everything’s explicit:** Who owns what, who can change or just borrow, and for how long.
-- **The Rust community?** Genuinely welcoming, even to total newbies.
+- **The Rust community:** Genuinely welcoming, even to beginners.
 
 ---
 
@@ -64,7 +64,7 @@ After hearing:
 - **The Rust Book:** Everyone says it, because it’s true (especially Chapter 4—ownership!).
 - **Clippy:** My favorite code reviewer, even when it stings.
 - **Keeping notes:** Writing down every concept, compiler message, and solution helped me not get overwhelmed.
-- **Building side projects:** Practice makes you grow. Even “failing” is progress.
+- **Building side projects:** Practice drives progress, including failed attempts.
 
 ---
 
@@ -77,7 +77,7 @@ After hearing:
 
 ---
 
-## What I Wish I'd Known Earlier
+## What I Wish I Had Known Earlier
 
 - *You don’t need to be “technical” to start.* Curiosity is the real prerequisite.
 - *Don’t optimize too soon:* get it working, then get it right.
@@ -86,17 +86,17 @@ After hearing:
 
 ---
 
-## A Few Tips From Me
+## Practical Tips
 
 1. **Start before you feel “ready”**—you only get ready by doing.
 2. **Read error messages like you’d read between the lines of a text**—all the clues are there.
-3. **Celebrate every little win**—your first compiling program is a scoreboard moment!
+3. **Celebrate every small win**—your first compiling program matters.
 4. **Don’t be afraid to ask for help** (Discord, Reddit, Rust forums, etc.).
-5. **Have fun**: enjoying the ride is the secret fuel.
+5. **Keep it enjoyable**: consistency is easier when you like the process.
 
 ---
 
-## About minikv: What It Can Do (as of v0.6.0)
+## About minikv: What It Can Do (as of v1.0.0)
 
 **Distributed Core:**
 - Multi-node Raft consensus (leader election, log replication, snapshots, recovery, partition detection)
@@ -107,11 +107,17 @@ After hearing:
 - Automatic cluster rebalancing (load detection, blob migration, metadata updates)
 - Range queries (efficient key scans)
 - Batch operations API (multi-put/get/delete)
-- TLS encryption for HTTP and gRPC (production-ready security)
+- TLS encryption for HTTP and gRPC
 - Flexible configuration: file, env, CLI override
-- **Admin dashboard endpoint** (`/admin/status`) for cluster monitoring
-- **S3-compatible API** (PUT/GET, in-memory and persistent backends)
-- **Watch/Subscribe system** (WebSocket & SSE endpoints) for real-time key change notifications
+- Admin dashboard endpoint (`/admin/status`) for cluster monitoring
+- S3-compatible API (PUT/GET, in-memory and persistent backends)
+- Watch/subscribe system (WebSocket and SSE) for real-time key change notifications
+
+**Time Series and Vectors:**
+- Time-series write and query APIs for event and metric workloads
+- Query-time filtering and aggregation for analytical use cases
+- Vector upsert and similarity query endpoints (top-k)
+- Persistent vector index on coordinator disk for restart durability
 
 **Storage Engine:**
 - Segmented, append-only log structure
@@ -120,7 +126,7 @@ After hearing:
 - Instant index snapshots (5ms restarts)
 - CRC32 checksums on every record
 - Automatic background compaction and space reclamation
-- **Persistent storage backends:** RocksDB, Sled, in-memory (configurable)
+- Persistent storage backends: RocksDB, Sled, in-memory (configurable)
 
 **Security & Multi-Tenancy:**
 - API Key authentication (Argon2)
@@ -142,16 +148,20 @@ After hearing:
 - CLI for cluster ops (verify, repair, compact, rebalance, batch, range)
 - WebSocket & SSE endpoints for real-time notifications
 
-**Infrastructure:**
+**Infrastructure and Operations:**
 - Docker Compose setup for dev/test
+- Helm chart with dev/staging/prod profiles
 - GitHub Actions for CI/CD
 - k6 benchmarks for real scenarios
 - Distributed tracing via OpenTelemetry & Jaeger
-- Prometheus metrics endpoint (`/metrics`)
+- Prometheus metrics endpoint (`/metrics`) and alert rules
+- Grafana dashboards for cluster visibility
+- Backup and restore runbook for operations
 
-**Testing & Internationalization:**
+**Testing and Quality:**
 - Integration, stress, and recovery tests
-- All code/scripts/docs in English
+- Release preflight checks (fmt, clippy, build, tests)
+- All code, scripts, and docs in English
 
 ---
 
@@ -160,9 +170,11 @@ After hearing:
 - Learned the fundamentals of Rust: ownership, lifetimes, async/await
 - Built a distributed storage engine with Raft, WAL, and 2PC
 - Added API Key/JWT authentication, RBAC, quotas, and audit logging
-- **Implemented a real-time notification system (watch/subscribe via WebSocket & SSE) for key changes**
+- Implemented a real-time notification system (watch/subscribe via WebSocket and SSE) for key changes
 - Integrated persistent storage backends (RocksDB, Sled)
-- Made the project production-ready with tests, CI, and comprehensive documentation
+- Added time-series APIs and vector similarity search
+- Reached v1.0.0 with release engineering checks and updated documentation
+- Started a Data Science program at AMSE (Aix-Marseille School of Economics) on April 2, 2026
 
 ---
 
@@ -170,6 +182,6 @@ After hearing:
 
 > “If you can read and express an idea, you can code. Patience, curiosity, and a love of learning are everything!”
 
-*Written by Em' (@whispem), proud Rust beginner—and living proof that you truly learn by building… even distributed key-value stores, even when you start from square one.*
+*Written by Em' (@whispem), Rust beginner, learning by building, including distributed key-value systems.*
 
-*"Structure determines meaning. You learn by writing — and by building."*
+*"Structure determines meaning. You learn by writing and by building."*

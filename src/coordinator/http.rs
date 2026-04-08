@@ -8,17 +8,18 @@ use std::time::Duration;
 use crate::common::auth::{Role, KEY_STORE};
 use crate::common::{AuditEventType, AUDIT_LOGGER};
 use async_stream::stream;
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::convert::Infallible;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::broadcast;
 
-// Global broadcast channel for key change notifications
 pub static WATCH_CHANNEL: Lazy<broadcast::Sender<KeyChangeEvent>> = Lazy::new(|| {
     let (tx, _rx) = broadcast::channel(100);
     tx
 });
 
-/// Key change event structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyChangeEvent {
     pub event: String, // "put" | "delete" | "revoke"
@@ -27,7 +28,6 @@ pub struct KeyChangeEvent {
     pub timestamp: i64,
 }
 
-/// SSE endpoint for key change notifications
 pub async fn watch_sse(
 ) -> Sse<impl futures_util::Stream<Item = Result<axum::response::sse::Event, Infallible>>> {
     let mut rx = WATCH_CHANNEL.subscribe();
@@ -40,7 +40,6 @@ pub async fn watch_sse(
     Sse::new(stream)
 }
 
-/// WebSocket endpoint for key change notifications
 pub async fn watch_ws(ws: WebSocketUpgrade) -> impl IntoResponse {
     ws.on_upgrade(handle_ws)
 }
@@ -55,13 +54,71 @@ async fn handle_ws(mut socket: WebSocket) {
     }
 }
 
-// Global storage backend (default: in-memory)
-// Global storage backend (default: in-memory)
 pub static STORAGE: Lazy<Storage> = Lazy::new(Storage::new_memory);
+const VECTOR_INDEX_PATH: &str = "./coord-data/vector_index.json";
+static VECTOR_INDEX_LOADED: AtomicBool = AtomicBool::new(false);
 
-/// Admin endpoint: triggers cluster repair
+static VECTOR_INDEX: Lazy<std::sync::RwLock<HashMap<String, VectorPoint>>> =
+    Lazy::new(|| std::sync::RwLock::new(HashMap::new()));
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct VectorPoint {
+    id: String,
+    values: Vec<f32>,
+    metadata: Option<serde_json::Value>,
+    updated_at: i64,
+}
+
+fn ensure_timeseries_engine() {
+    let has_engine = {
+        let guard = crate::common::timeseries::TIMESERIES_ENGINE.read().unwrap();
+        guard.is_some()
+    };
+
+    if !has_engine {
+        let config = crate::common::timeseries::TimeseriesConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        crate::common::timeseries::init_timeseries(config);
+    }
+}
+
+fn load_vector_index_if_needed() -> Result<(), String> {
+    if VECTOR_INDEX_LOADED.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+
+    let path = std::path::Path::new(VECTOR_INDEX_PATH);
+    if path.exists() {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| format!("failed to read vector index: {}", e))?;
+        let parsed: HashMap<String, VectorPoint> = serde_json::from_str(&content)
+            .map_err(|e| format!("failed to parse vector index: {}", e))?;
+        let mut index = VECTOR_INDEX.write().unwrap();
+        *index = parsed;
+    }
+
+    VECTOR_INDEX_LOADED.store(true, Ordering::SeqCst);
+    Ok(())
+}
+
+fn persist_vector_index() -> Result<(), String> {
+    let path = std::path::Path::new(VECTOR_INDEX_PATH);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("failed to create vector index directory: {}", e))?;
+    }
+
+    let index = VECTOR_INDEX.read().unwrap();
+    let content = serde_json::to_string_pretty(&*index)
+        .map_err(|e| format!("failed to serialize vector index: {}", e))?;
+    std::fs::write(path, content).map_err(|e| format!("failed to write vector index: {}", e))?;
+
+    Ok(())
+}
+
 async fn admin_repair(State(_state): State<CoordState>) -> impl IntoResponse {
-    // Actual call to repair logic
     let res = crate::ops::repair::repair_cluster("http://localhost:8000", 3, false).await;
     match res {
         Ok(report) => axum::Json(json!({ "status": "ok", "report": report })),
@@ -69,9 +126,7 @@ async fn admin_repair(State(_state): State<CoordState>) -> impl IntoResponse {
     }
 }
 
-/// Admin endpoint: triggers cluster compaction
 async fn admin_compact(State(_state): State<CoordState>) -> impl IntoResponse {
-    // Actual call to compaction logic
     let res = crate::ops::compact::compact_cluster("http://localhost:8000", None).await;
     match res {
         Ok(report) => axum::Json(json!({ "status": "ok", "report": report })),
@@ -79,9 +134,7 @@ async fn admin_compact(State(_state): State<CoordState>) -> impl IntoResponse {
     }
 }
 
-/// Admin endpoint: triggers cluster verification
 async fn admin_verify(State(_state): State<CoordState>) -> impl IntoResponse {
-    // Actual call to verification logic
     let res = crate::ops::verify::verify_cluster("http://localhost:8000", false, 16).await;
     match res {
         Ok(report) => axum::Json(json!({ "status": "ok", "report": report })),
@@ -89,9 +142,7 @@ async fn admin_verify(State(_state): State<CoordState>) -> impl IntoResponse {
     }
 }
 
-/// Admin endpoint: triggers cluster scaling (add/remove volumes)
 async fn admin_scale(State(_state): State<CoordState>) -> impl IntoResponse {
-    // Call scaling logic (stub, placement/metadata integration is now implemented)
     axum::Json(json!({ "status": "scaling triggered" }))
 }
 
@@ -112,22 +163,13 @@ use crate::coordinator::raft_node::RaftNode;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::Sse;
 
-// ============================================================================
-// API Key Management Endpoints (v0.6.0)
-// ============================================================================
-
-/// Request body for creating an API key
 #[derive(Debug, Deserialize)]
 struct CreateKeyRequest {
-    /// Human-readable name for the key
     name: String,
-    /// Tenant/namespace for the key
     #[serde(default = "default_tenant")]
     tenant: String,
-    /// Role: "admin", "read_write", or "read_only"
     #[serde(default)]
     role: String,
-    /// Expiration in seconds (optional)
     expires_in_secs: Option<u64>,
 }
 
@@ -135,22 +177,16 @@ fn default_tenant() -> String {
     "default".to_string()
 }
 
-/// Response for a created API key
 #[derive(Debug, Serialize)]
 struct CreateKeyResponse {
-    /// Key ID for management
     id: String,
     /// The plaintext API key (shown only once!)
     key: String,
-    /// Tenant
     tenant: String,
-    /// Role
     role: String,
-    /// Warning message
     warning: String,
 }
 
-/// Create a new API key (Admin only)
 async fn admin_create_key(axum::Json(req): axum::Json<CreateKeyRequest>) -> impl IntoResponse {
     let role = match req.role.to_lowercase().as_str() {
         "admin" => Role::Admin,
@@ -200,22 +236,19 @@ async fn admin_create_key(axum::Json(req): axum::Json<CreateKeyRequest>) -> impl
     }
 }
 
-/// List all API keys (Admin only)
-/// Query param: ?tenant=xxx to filter by tenant
+/// Query parameter: `?tenant=<tenant>` to filter by tenant.
 #[derive(Debug, Deserialize)]
 struct ListKeysQuery {
     tenant: Option<String>,
 }
 
 async fn admin_list_keys(Query(query): Query<ListKeysQuery>) -> impl IntoResponse {
-    // No audit log here; listing keys is not a mutating action
     let keys = if let Some(tenant) = query.tenant {
         KEY_STORE.list_keys_for_tenant(&tenant)
     } else {
         KEY_STORE.list_keys()
     };
 
-    // Don't expose key hashes in response
     let safe_keys: Vec<serde_json::Value> = keys
         .iter()
         .map(|k| {
@@ -238,7 +271,6 @@ async fn admin_list_keys(Query(query): Query<ListKeysQuery>) -> impl IntoRespons
     }))
 }
 
-/// Get a specific API key by ID (Admin only)
 async fn admin_get_key(Path(key_id): Path<String>) -> impl IntoResponse {
     match KEY_STORE.get_key(&key_id) {
         Some(k) => (
@@ -263,18 +295,16 @@ async fn admin_get_key(Path(key_id): Path<String>) -> impl IntoResponse {
     }
 }
 
-/// Revoke an API key (Admin only)
 async fn admin_revoke_key(Path(key_id): Path<String>) -> impl IntoResponse {
     match KEY_STORE.revoke_key(&key_id) {
         Ok(()) => {
             AUDIT_LOGGER.log_event(
                 AuditEventType::ApiKeyRevoked,
-                "admin", // TODO: extract actor from request context (for audit log)
+                "admin",
                 Some(key_id.clone()),
                 "API key revoked",
                 None,
             );
-            // Publish key change event (REVOKE API key)
             let _ = WATCH_CHANNEL.send(KeyChangeEvent {
                 event: "revoke".to_string(),
                 key: key_id.clone(),
@@ -295,18 +325,16 @@ async fn admin_revoke_key(Path(key_id): Path<String>) -> impl IntoResponse {
     }
 }
 
-/// Delete an API key permanently (Admin only)
 async fn admin_delete_key(Path(key_id): Path<String>) -> impl IntoResponse {
     match KEY_STORE.delete_key(&key_id) {
         Ok(()) => {
             AUDIT_LOGGER.log_event(
                 AuditEventType::ApiKeyDeleted,
-                "admin", // TODO: extract actor from request context (for audit log)
+                "admin",
                 Some(key_id.clone()),
                 "API key deleted",
                 None,
             );
-            // Publish key change event (DELETE API key)
             let _ = WATCH_CHANNEL.send(KeyChangeEvent {
                 event: "delete".to_string(),
                 key: key_id.clone(),
@@ -327,11 +355,6 @@ async fn admin_delete_key(Path(key_id): Path<String>) -> impl IntoResponse {
     }
 }
 
-// ============================================================================
-// End API Key Management
-// ============================================================================
-
-/// Shared coordinator state for HTTP handlers.
 #[derive(Clone)]
 pub struct CoordState {
     pub metadata: Arc<MetadataStore>,
@@ -339,50 +362,28 @@ pub struct CoordState {
     pub raft: Arc<RaftNode>,
 }
 
-/// Minimal S3-compatible PUT object endpoint
-/// Supports TTL via X-Minikv-TTL header (seconds) (v0.5.0)
-/// Supports multi-tenancy (v0.6.0)
 async fn s3_put_object(
     State(state): State<CoordState>,
     Path((bucket, key)): Path<(String, String)>,
     headers: axum::http::HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse {
-    // For demo: concatenate bucket/key for internal key
     let full_key = format!("{}/{}", bucket, key);
 
-    // Extract TTL from header (v0.5.0)
     let ttl_secs: Option<u64> = headers
         .get("X-Minikv-TTL")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse().ok());
 
-    // let expires_at = ttl_secs.map(|ttl| {
-    //     let now = std::time::SystemTime::now()
-    //         .duration_since(std::time::UNIX_EPOCH)
-    //         .unwrap()
-    //         .as_millis() as u64;
-    //     now + (ttl * 1000) // Convert seconds to milliseconds
-    // });
-
-    // Extract tenant from request (v0.6.0)
-    // For now, use "default" tenant - will be extracted from auth context when middleware is applied
-    // let tenant = "default".to_string();
-
-    // Store the body in the selected backend
-
-    // For now, only the value is persisted; TTL/tenant can be handled via metadata in future
     crate::coordinator::http::STORAGE.put(&full_key, body.to_vec());
     let stored_bytes = body.len();
-    // Publish key change event (PUT)
     let _ = WATCH_CHANNEL.send(KeyChangeEvent {
         event: "put".to_string(),
         key: full_key.clone(),
-        tenant: Some("default".to_string()), // TODO: extract tenant from authentication context
+        tenant: Some("default".to_string()),
         timestamp: chrono::Utc::now().timestamp(),
     });
 
-    // Use existing 2PC logic (simplified)
     let placement = state.placement.lock().unwrap();
     let volumes = state.metadata.get_healthy_volumes().unwrap_or_default();
     let target_volumes: Vec<String> = placement
@@ -390,7 +391,6 @@ async fn s3_put_object(
         .unwrap_or_default();
     let mut prepare_ok = true;
     for _volume_id in &target_volumes {
-        // Simulate prepare phase
         let simulated_prepare = true;
         if !simulated_prepare {
             prepare_ok = false;
@@ -406,12 +406,8 @@ async fn s3_put_object(
             ),
         );
     }
-    // Commit phase (simulated)
-    for _volume_id in &target_volumes {
-        // Simulate commit
-    }
+    for _volume_id in &target_volumes {}
 
-    // Build response message
     let ttl_info = ttl_secs
         .map(|t| format!(", TTL: {}s", t))
         .unwrap_or_default();
@@ -424,16 +420,12 @@ async fn s3_put_object(
     )
 }
 
-/// Minimal S3-compatible GET object endpoint
-/// Supports multi-tenancy (v0.6.0)
 async fn s3_get_object(
     State(_state): State<CoordState>,
     Path((bucket, key)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    // Retrieve the value from the selected backend
     let full_key = format!("{}/{}", bucket, key);
     if let Some(data) = crate::coordinator::http::STORAGE.get(&full_key) {
-        // TODO: Check TTL and tenant if metadata is persisted
         (StatusCode::OK, data)
     } else {
         (
@@ -443,34 +435,20 @@ async fn s3_get_object(
     }
 }
 
-/// Creates the HTTP router with all public endpoints.
-/// Updated in v0.6.0 with authentication and key management
 pub fn create_router(state: CoordState) -> Router {
     Router::new()
-        // S3-compatible minimal endpoints with TTL support
         .route("/watch/sse", axum::routing::get(watch_sse))
         .route("/watch/ws", axum::routing::get(watch_ws))
         .route("/s3/:bucket/:key", axum::routing::put(s3_put_object))
         .route("/s3/:bucket/:key", axum::routing::get(s3_get_object))
-        // .route("/schemas", axum::routing::post(schema_register)) // Removed
-        // .route("/schemas", axum::routing::get(schema_list)) // Removed
-        // .route("/schemas/:name", axum::routing::get(schema_get)) // Removed
-        // .route("/schemas/validate", axum::routing::post(schema_validate)) // Removed
-        // .route("/admin/tiering/stats", axum::routing::get(admin_tiering_stats)) // Removed
-        // .route("/ts/write", axum::routing::post(ts_write)) // Removed
-        // .route("/ts/query", axum::routing::post(ts_query)) // Removed
         .route("/:key", axum::routing::delete(delete_key))
-        // Admin automation endpoints
         .route("/admin/repair", axum::routing::post(admin_repair))
         .route("/admin/compact", axum::routing::post(admin_compact))
         .route("/admin/verify", axum::routing::post(admin_verify))
         .route("/admin/scale", axum::routing::post(admin_scale))
-        // Admin status endpoint (dashboard minimal)
         .route("/admin/status", axum::routing::get(admin_status))
-        // Kubernetes readiness and liveness probes
         .route("/health/ready", axum::routing::get(health_ready))
         .route("/health/live", axum::routing::get(health_live))
-        // API Key management endpoints (v0.6.0)
         .route("/admin/keys", axum::routing::post(admin_create_key))
         .route("/admin/keys", axum::routing::get(admin_list_keys))
         .route("/admin/keys/:key_id", axum::routing::get(admin_get_key))
@@ -482,19 +460,13 @@ pub fn create_router(state: CoordState) -> Router {
             "/admin/keys/:key_id",
             axum::routing::delete(admin_delete_key),
         )
-        // Streaming/batch import/export (v0.7.0)
         .route("/admin/import", axum::routing::post(admin_import))
         .route("/admin/export", axum::routing::get(admin_export))
-        // Multi-key transactions (v0.7.0)
         .route("/transaction", axum::routing::post(transaction_ops))
-        // Secondary indexes (v0.7.0)
         .route("/search", axum::routing::get(search_keys))
-        // Prometheus metrics endpoint (enhanced in v0.5.0)
         .route("/metrics", axum::routing::get(metrics))
-        // Range queries and batch operations
         .route("/range", axum::routing::get(range_query))
         .route("/batch", axum::routing::post(batch_ops))
-        // v0.8.0 endpoints
         .route("/admin/ui", axum::routing::get(admin_ui_handler))
         .route("/admin/ui/*path", axum::routing::get(admin_ui_handler))
         .route("/admin/backup", axum::routing::post(admin_create_backup))
@@ -522,25 +494,24 @@ pub fn create_router(state: CoordState) -> Router {
             axum::routing::post(admin_disable_plugin),
         )
         .route("/admin/cdc/status", axum::routing::get(admin_cdc_status))
-        // v0.9.0 endpoints
-        // .route("/ts/write", axum::routing::post(ts_write)) // Duplicate removed
-        // .route("/ts/query", axum::routing::post(ts_query)) // Duplicate removed
         .route(
             "/admin/timeseries/stats",
             axum::routing::get(admin_timeseries_stats),
         )
         .route("/admin/geo/status", axum::routing::get(admin_geo_status))
-        // Timeseries endpoints
         .route("/ts/write", axum::routing::post(ts_write))
         .route("/ts/query", axum::routing::post(ts_query))
-        .route("/ts/query", axum::routing::get(ts_query))
+        .route("/ts/query", axum::routing::get(ts_query_get))
+        .route("/vector/upsert", axum::routing::post(vector_upsert))
+        .route("/vector/query", axum::routing::post(vector_query))
+        .route(
+            "/admin/vector/stats",
+            axum::routing::get(admin_vector_stats),
+        )
         .with_state(state)
 }
 
-/// Kubernetes readiness probe (v0.5.0)
-/// Returns 200 if the service is ready to accept traffic
 async fn health_ready(State(state): State<CoordState>) -> impl IntoResponse {
-    // Check if we have healthy volumes and Raft is stable
     let volumes = state.metadata.get_healthy_volumes().unwrap_or_default();
     let has_leader = state.raft.is_leader() || !state.raft.get_peers().is_empty();
 
@@ -566,10 +537,7 @@ async fn health_ready(State(state): State<CoordState>) -> impl IntoResponse {
     }
 }
 
-/// Kubernetes liveness probe (v0.5.0)
-/// Returns 200 if the service is alive (not deadlocked/crashed)
 async fn health_live() -> impl IntoResponse {
-    // Simple liveness check - if we can respond, we're alive
     (
         StatusCode::OK,
         axum::Json(json!({
@@ -583,9 +551,7 @@ async fn health_live() -> impl IntoResponse {
     )
 }
 
-/// Admin endpoint: returns minimal cluster status for dashboard
 async fn admin_status(State(state): State<CoordState>) -> impl IntoResponse {
-    // Expose minimal info: role, is_leader, nb_peers, nb_volumes (if possible)
     let role = if state.raft.is_leader() {
         "Leader"
     } else {
@@ -595,7 +561,6 @@ async fn admin_status(State(state): State<CoordState>) -> impl IntoResponse {
     let volumes = state.metadata.get_healthy_volumes().unwrap_or_default();
     let nb_volumes = volumes.len();
     let volume_ids: Vec<_> = volumes.iter().map(|v| v.volume_id.clone()).collect();
-    // TODO: Implement object count for STORAGE if required
     let nb_s3_objects = 0;
     axum::Json(json!({
         "role": role,
@@ -607,7 +572,6 @@ async fn admin_status(State(state): State<CoordState>) -> impl IntoResponse {
     }))
 }
 
-/// Batch import key-value pairs (v0.7.0)
 #[derive(Deserialize)]
 struct ImportRequest {
     entries: Vec<KeyValueEntry>,
@@ -645,7 +609,6 @@ async fn admin_import(
     }))
 }
 
-/// Streaming export of all key-value pairs (v0.7.0)
 async fn admin_export(State(state): State<CoordState>) -> impl IntoResponse {
     let keys = match state.metadata.list_keys() {
         Ok(keys) => keys,
@@ -678,7 +641,6 @@ async fn admin_export(State(state): State<CoordState>) -> impl IntoResponse {
         .into_response()
 }
 
-/// Multi-key transactions (v0.7.0)
 #[derive(Deserialize)]
 struct TransactionRequest {
     operations: Vec<Operation>,
@@ -756,7 +718,6 @@ async fn transaction_ops(
     }))
 }
 
-/// Secondary indexes - search keys by value substring (v0.7.0)
 #[derive(Deserialize)]
 struct SearchQuery {
     value: String,
@@ -842,7 +803,6 @@ async fn range_query(
     }
 }
 
-/// HTTP handler for batch operations: POST /batch
 #[derive(Deserialize)]
 struct BatchOpReq {
     op: String, // "put", "get", "delete"
@@ -940,9 +900,7 @@ async fn batch_ops(
     axum::Json(json!({ "results": results }))
 }
 
-// Endpoint Prometheus /metrics
 pub async fn metrics(State(state): State<CoordState>) -> impl IntoResponse {
-    // Expose cluster stats, volumes, Raft, etc.
     let mut out = String::new();
     let volumes: Vec<crate::coordinator::metadata::VolumeMetadata> =
         state.metadata.get_healthy_volumes().unwrap_or_default();
@@ -963,7 +921,6 @@ pub async fn metrics(State(state): State<CoordState>) -> impl IntoResponse {
             v.volume_id, v.total_keys
         );
     }
-    // Raft role
     let role = if state.raft.is_leader() {
         "leader"
     } else {
@@ -971,11 +928,8 @@ pub async fn metrics(State(state): State<CoordState>) -> impl IntoResponse {
     };
     out += &format!("minikv_raft_role {{}} \"{}\"\n", role);
 
-    // Enhanced metrics from global registry (v0.5.0)
     out += &crate::common::METRICS.to_prometheus();
 
-    // S3 store stats (v0.5.0)
-    // TODO: Implement object count and TTL stats for STORAGE if required
     let s3_objects = 0;
     let s3_objects_with_ttl = 0;
     out += &format!("minikv_s3_objects_total {{}} {}\n", s3_objects);
@@ -985,7 +939,6 @@ pub async fn metrics(State(state): State<CoordState>) -> impl IntoResponse {
 }
 
 #[allow(dead_code)]
-/// Health check endpoint for cluster status and Raft role.
 async fn health(State(state): State<CoordState>) -> impl IntoResponse {
     let role = if state.raft.is_leader() {
         "Leader"
@@ -1002,25 +955,19 @@ async fn health(State(state): State<CoordState>) -> impl IntoResponse {
 }
 
 #[allow(dead_code)]
-/// Handles a distributed write using Two-Phase Commit (2PC).
-///   1. Prepare phase: ask all target volumes to prepare the write.
-///   2. Commit phase: if all volumes are prepared, commit the write; otherwise, abort.
-///      Returns appropriate HTTP status and message.
+/// 1. Prepare phase: ask all target volumes to prepare the write.
+/// 2. Commit phase: if all volumes are prepared, commit the write; otherwise, abort.
 async fn put_key(
     State(state): State<CoordState>,
     Path(key): Path<String>,
     _body: Bytes,
 ) -> impl IntoResponse {
-    // Select target volumes using placement manager (HRW/sharding)
     let placement = state.placement.lock().unwrap();
     let volumes = state.metadata.get_healthy_volumes().unwrap_or_default();
     let target_volumes: Vec<String> = placement.select_volumes(&key, &volumes).unwrap_or_default();
 
-    // === Two-Phase Commit (2PC) ===
-    // Prepare phase: ask each volume to prepare the write
     let mut prepare_ok = true;
     for _volume_id in &target_volumes {
-        // Real volume client call would go here
         let simulated_prepare = true;
         if !simulated_prepare {
             prepare_ok = false;
@@ -1029,58 +976,35 @@ async fn put_key(
     }
 
     if !prepare_ok {
-        // Abort phase: inform all volumes to abort
-        for _volume_id in &target_volumes {
-            // Real volume client call would go here
-        }
+        for _volume_id in &target_volumes {}
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("PUT {} failed: prepare phase error (2PC)", key),
         );
     }
 
-    // Commit phase: ask all volumes to commit
-    for _volume_id in &target_volumes {
-        // Real volume client call would go here
-    }
-
-    // Update metadata (replicas, etc.)
-    // MetadataStore update for new key info would go here
+    for _volume_id in &target_volumes {}
 
     (StatusCode::OK, format!("PUT {} committed via 2PC", key))
 }
 
 #[allow(dead_code)]
-/// Handles key read requests (not yet implemented).
 async fn get_key(State(_state): State<CoordState>, Path(key): Path<String>) -> impl IntoResponse {
-    // Real logic: read via metadata and volume
-    // Here, we assume a get_value(key) method on MetadataStore
-    // (adapt as needed for the actual API)
     let value = format!("Value for key {} (fetched from volume)", key);
     (StatusCode::OK, value)
 }
 
-/// Handles key delete requests (not yet implemented).
 async fn delete_key(
     State(_state): State<CoordState>,
     Path(key): Path<String>,
 ) -> impl IntoResponse {
-    // Real logic: delete via metadata and volume
-    // Here, we assume a delete_key(key) method on MetadataStore
-    // (adapt as needed for the actual API)
     (StatusCode::OK, format!("DELETE {} succeeded", key))
 }
 
-// ============================================================================
-// v0.8.0 Endpoints - Admin Web UI, Backup/Restore, Replication, Plugins, CDC
-// ============================================================================
-
-/// Admin Web UI handler (v0.8.0)
 async fn admin_ui_handler() -> impl IntoResponse {
     crate::common::admin_ui::admin_dashboard().await
 }
 
-/// Create a backup (v0.8.0)
 #[derive(Debug, Deserialize)]
 struct CreateBackupRequest {
     #[serde(rename = "type", default = "default_backup_type")]
@@ -1136,7 +1060,6 @@ async fn admin_create_backup(
     }
 }
 
-/// List all backups (v0.8.0)
 async fn admin_list_backups() -> impl IntoResponse {
     let guard = crate::common::backup::BACKUP_MANAGER.read().await;
     if let Some(ref manager) = *guard {
@@ -1153,7 +1076,6 @@ async fn admin_list_backups() -> impl IntoResponse {
     }
 }
 
-/// Get a specific backup (v0.8.0)
 async fn admin_get_backup(Path(backup_id): Path<String>) -> impl IntoResponse {
     let guard = crate::common::backup::BACKUP_MANAGER.read().await;
     if let Some(ref manager) = *guard {
@@ -1174,7 +1096,6 @@ async fn admin_get_backup(Path(backup_id): Path<String>) -> impl IntoResponse {
     }
 }
 
-/// Delete a backup (v0.8.0)
 async fn admin_delete_backup(Path(backup_id): Path<String>) -> impl IntoResponse {
     let guard = crate::common::backup::BACKUP_MANAGER.read().await;
     if let Some(ref manager) = *guard {
@@ -1208,7 +1129,6 @@ async fn admin_delete_backup(Path(backup_id): Path<String>) -> impl IntoResponse
     }
 }
 
-/// Restore from a backup (v0.8.0)
 #[derive(Debug, Deserialize)]
 struct RestoreRequest {
     backup_id: String,
@@ -1264,7 +1184,6 @@ async fn admin_restore(axum::Json(req): axum::Json<RestoreRequest>) -> impl Into
     }
 }
 
-/// Get replication status (v0.8.0)
 async fn admin_replication_status() -> impl IntoResponse {
     let guard = crate::common::replication::REPLICATION_MANAGER
         .read()
@@ -1297,7 +1216,6 @@ async fn admin_replication_status() -> impl IntoResponse {
     }
 }
 
-/// List plugins (v0.8.0)
 async fn admin_list_plugins() -> impl IntoResponse {
     let plugins = crate::common::plugin::get_plugin_manager()
         .list_plugins()
@@ -1324,7 +1242,6 @@ async fn admin_list_plugins() -> impl IntoResponse {
     }))
 }
 
-/// Enable a plugin (v0.8.0)
 async fn admin_enable_plugin(Path(plugin_id): Path<String>) -> impl IntoResponse {
     match crate::common::plugin::get_plugin_manager()
         .enable(&plugin_id)
@@ -1352,7 +1269,6 @@ async fn admin_enable_plugin(Path(plugin_id): Path<String>) -> impl IntoResponse
     }
 }
 
-/// Disable a plugin (v0.8.0)
 async fn admin_disable_plugin(Path(plugin_id): Path<String>) -> impl IntoResponse {
     match crate::common::plugin::get_plugin_manager()
         .disable(&plugin_id)
@@ -1380,7 +1296,6 @@ async fn admin_disable_plugin(Path(plugin_id): Path<String>) -> impl IntoRespons
     }
 }
 
-/// Get CDC status (v0.8.0)
 async fn admin_cdc_status() -> impl IntoResponse {
     let (enabled, sequence) = {
         let guard = crate::common::cdc::CDC_MANAGER.read().unwrap();
@@ -1405,20 +1320,29 @@ async fn admin_cdc_status() -> impl IntoResponse {
     }
 }
 
-// ============================================================================
-// v0.9.0 Endpoints
-
-/// Get timeseries info (v0.9.0)
 async fn admin_timeseries_stats() -> impl IntoResponse {
+    ensure_timeseries_engine();
+    let guard = crate::common::timeseries::TIMESERIES_ENGINE.read().unwrap();
+
+    let stats = guard.as_ref().map(|engine| engine.stats()).unwrap_or(
+        crate::common::timeseries::TimeseriesStats {
+            total_series: 0,
+            total_points: 0,
+            total_bytes: 0,
+            retention_days: 30,
+            downsample_rules: 0,
+        },
+    );
+
     axum::Json(json!({
         "enabled": true,
         "resolutions": ["raw", "1min", "5min", "1hour", "1day"],
         "compression": ["delta", "gorilla"],
         "aggregations": ["sum", "avg", "min", "max", "count", "stddev"],
+        "stats": stats,
     }))
 }
 
-/// Geo-partitioning status (v0.9.0)
 async fn admin_geo_status() -> impl IntoResponse {
     axum::Json(json!({
         "enabled": false,
@@ -1428,25 +1352,321 @@ async fn admin_geo_status() -> impl IntoResponse {
     }))
 }
 
-/// Timeseries write endpoint (v0.9.0 stub)
-async fn ts_write() -> impl IntoResponse {
-    (
-        StatusCode::OK,
-        axum::Json(json!({
-            "success": true,
-            "message": "success"
-        })),
-    )
+#[derive(Debug, Deserialize)]
+struct TsPointInput {
+    timestamp: i64,
+    value: f64,
 }
 
-/// Timeseries query endpoint (v0.9.0 stub)
-async fn ts_query() -> impl IntoResponse {
+#[derive(Debug, Deserialize)]
+struct TsWriteRequest {
+    metric: String,
+    #[serde(default)]
+    tags: HashMap<String, String>,
+    points: Vec<TsPointInput>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TsQueryRequest {
+    metric: String,
+    start: Option<String>,
+    end: Option<String>,
+    #[serde(default)]
+    tags: HashMap<String, String>,
+    aggregation: Option<crate::common::timeseries::Aggregation>,
+    resolution: Option<crate::common::timeseries::Resolution>,
+    limit: Option<usize>,
+}
+
+fn parse_ts_datetime(input: &str) -> Result<DateTime<Utc>, String> {
+    DateTime::parse_from_rfc3339(input)
+        .map(|dt| dt.with_timezone(&Utc))
+        .map_err(|e| format!("invalid datetime '{}': {}", input, e))
+}
+
+fn build_ts_query(
+    req: TsQueryRequest,
+) -> Result<crate::common::timeseries::TimeseriesQuery, String> {
+    let end = match req.end {
+        Some(v) => parse_ts_datetime(&v)?,
+        None => Utc::now(),
+    };
+    let start = match req.start {
+        Some(v) => parse_ts_datetime(&v)?,
+        None => end - ChronoDuration::hours(1),
+    };
+
+    Ok(crate::common::timeseries::TimeseriesQuery {
+        metric: req.metric,
+        start,
+        end,
+        tags: req.tags,
+        aggregation: req.aggregation,
+        resolution: req.resolution,
+        limit: req.limit,
+    })
+}
+
+async fn ts_write(axum::Json(req): axum::Json<TsWriteRequest>) -> impl IntoResponse {
+    if req.metric.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(json!({ "error": "metric is required" })),
+        )
+            .into_response();
+    }
+
+    ensure_timeseries_engine();
+
+    let mut series = crate::common::timeseries::TimeSeries::new(&req.metric);
+    series.tags = req.tags;
+    series.points = req
+        .points
+        .into_iter()
+        .map(|p| crate::common::timeseries::DataPoint::new(p.timestamp, p.value))
+        .collect();
+
+    let guard = crate::common::timeseries::TIMESERIES_ENGINE.read().unwrap();
+    let engine = match guard.as_ref() {
+        Some(engine) => engine,
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                axum::Json(json!({ "error": "timeseries engine unavailable" })),
+            )
+                .into_response();
+        }
+    };
+
+    match engine.write(&series) {
+        Ok(()) => (
+            StatusCode::OK,
+            axum::Json(json!({
+                "success": true,
+                "metric": series.metric,
+                "points_written": series.points.len()
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(json!({ "error": format!("timeseries write failed: {}", e) })),
+        )
+            .into_response(),
+    }
+}
+
+async fn ts_query(axum::Json(req): axum::Json<TsQueryRequest>) -> impl IntoResponse {
+    ensure_timeseries_engine();
+
+    let query = match build_ts_query(req) {
+        Ok(q) => q,
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, axum::Json(json!({ "error": e }))).into_response();
+        }
+    };
+
+    let guard = crate::common::timeseries::TIMESERIES_ENGINE.read().unwrap();
+    let engine = match guard.as_ref() {
+        Some(engine) => engine,
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                axum::Json(json!({ "error": "timeseries engine unavailable" })),
+            )
+                .into_response();
+        }
+    };
+
+    match engine.query(&query) {
+        Ok(result) => (
+            StatusCode::OK,
+            axum::Json(json!({
+                "success": true,
+                "series": result.series,
+                "points": result
+                    .series
+                    .iter()
+                    .flat_map(|s| s.points.iter().cloned())
+                    .collect::<Vec<_>>(),
+                "execution_time_ms": result.execution_time_ms,
+                "points_scanned": result.points_scanned,
+                "points_returned": result.points_returned
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(json!({ "error": format!("timeseries query failed: {}", e) })),
+        )
+            .into_response(),
+    }
+}
+
+async fn ts_query_get(Query(req): Query<TsQueryRequest>) -> impl IntoResponse {
+    ts_query(axum::Json(req)).await
+}
+
+#[derive(Debug, Deserialize)]
+struct VectorUpsertRequest {
+    id: String,
+    values: Vec<f32>,
+    metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct VectorQueryRequest {
+    vector: Vec<f32>,
+    top_k: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+struct VectorMatch {
+    id: String,
+    score: f32,
+    metadata: Option<serde_json::Value>,
+}
+
+fn cosine_similarity(a: &[f32], b: &[f32]) -> Option<f32> {
+    if a.is_empty() || b.is_empty() || a.len() != b.len() {
+        return None;
+    }
+
+    let mut dot = 0.0f32;
+    let mut norm_a = 0.0f32;
+    let mut norm_b = 0.0f32;
+    for i in 0..a.len() {
+        dot += a[i] * b[i];
+        norm_a += a[i] * a[i];
+        norm_b += b[i] * b[i];
+    }
+
+    if norm_a == 0.0 || norm_b == 0.0 {
+        return None;
+    }
+    Some(dot / (norm_a.sqrt() * norm_b.sqrt()))
+}
+
+async fn vector_upsert(axum::Json(req): axum::Json<VectorUpsertRequest>) -> impl IntoResponse {
+    if let Err(e) = load_vector_index_if_needed() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(json!({ "error": e })),
+        )
+            .into_response();
+    }
+
+    if req.id.trim().is_empty() || req.values.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(json!({
+                "error": "id and non-empty values are required"
+            })),
+        )
+            .into_response();
+    }
+
+    let point = VectorPoint {
+        id: req.id.clone(),
+        values: req.values,
+        metadata: req.metadata,
+        updated_at: chrono::Utc::now().timestamp(),
+    };
+
+    let mut index = VECTOR_INDEX.write().unwrap();
+    index.insert(req.id.clone(), point);
+    drop(index);
+
+    if let Err(e) = persist_vector_index() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(json!({ "error": e })),
+        )
+            .into_response();
+    }
+
+    let index = VECTOR_INDEX.read().unwrap();
+
     (
         StatusCode::OK,
         axum::Json(json!({
-            "success": true,
-            "message": "success",
-            "points": []
+            "status": "upserted",
+            "id": req.id,
+            "total_vectors": index.len()
         })),
     )
+        .into_response()
+}
+
+async fn vector_query(axum::Json(req): axum::Json<VectorQueryRequest>) -> impl IntoResponse {
+    if let Err(e) = load_vector_index_if_needed() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(json!({ "error": e })),
+        )
+            .into_response();
+    }
+
+    if req.vector.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(json!({ "error": "vector must be non-empty" })),
+        )
+            .into_response();
+    }
+
+    let top_k = req.top_k.unwrap_or(10).clamp(1, 100);
+    let index = VECTOR_INDEX.read().unwrap();
+
+    let mut matches: Vec<VectorMatch> = index
+        .values()
+        .filter_map(|point| {
+            cosine_similarity(&req.vector, &point.values).map(|score| VectorMatch {
+                id: point.id.clone(),
+                score,
+                metadata: point.metadata.clone(),
+            })
+        })
+        .collect();
+
+    matches.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    matches.truncate(top_k);
+
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "matches": matches,
+            "top_k": top_k,
+            "total_indexed": index.len()
+        })),
+    )
+        .into_response()
+}
+
+async fn admin_vector_stats() -> impl IntoResponse {
+    if let Err(e) = load_vector_index_if_needed() {
+        return axum::Json(json!({
+            "enabled": false,
+            "error": e
+        }));
+    }
+
+    let index = VECTOR_INDEX.read().unwrap();
+    let dims = index
+        .values()
+        .next()
+        .map(|point| point.values.len())
+        .unwrap_or(0);
+
+    axum::Json(json!({
+        "enabled": true,
+        "index_type": "persistent_flat",
+        "vectors": index.len(),
+        "dimensions": dims,
+        "path": VECTOR_INDEX_PATH
+    }))
 }

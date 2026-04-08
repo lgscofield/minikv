@@ -6,34 +6,23 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, RwLock};
 
-// ============================================================================
-// Configuration
-// ============================================================================
-
-/// Time-series configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimeseriesConfig {
-    /// Enable time-series optimizations
     #[serde(default)]
     pub enabled: bool,
 
-    /// Data retention in days
     #[serde(default = "default_retention_days")]
     pub retention_days: u32,
 
-    /// Downsampling rules
     #[serde(default)]
     pub downsample_rules: Vec<DownsampleRule>,
 
-    /// Compression settings
     #[serde(default)]
     pub compression: CompressionConfig,
 
-    /// Maximum points per query
     #[serde(default = "default_max_points")]
     pub max_points_per_query: usize,
 
-    /// Background job interval (seconds)
     #[serde(default = "default_job_interval")]
     pub job_interval_secs: u64,
 }
@@ -74,17 +63,13 @@ impl Default for TimeseriesConfig {
     }
 }
 
-/// Downsampling rule
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownsampleRule {
-    /// Apply after this duration
     #[serde(with = "duration_serde")]
     pub after: Duration,
 
-    /// Target resolution
     pub resolution: Resolution,
 
-    /// Aggregation function
     pub aggregation: Aggregation,
 }
 
@@ -108,7 +93,6 @@ mod duration_serde {
     }
 }
 
-/// Time resolution
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Resolution {
@@ -121,7 +105,6 @@ pub enum Resolution {
 }
 
 impl Resolution {
-    /// Get duration in milliseconds
     pub fn as_millis(&self) -> i64 {
         match self {
             Resolution::Second => 1_000,
@@ -133,14 +116,12 @@ impl Resolution {
         }
     }
 
-    /// Align timestamp to resolution boundary
     pub fn align(&self, ts: i64) -> i64 {
         let millis = self.as_millis();
         (ts / millis) * millis
     }
 }
 
-/// Aggregation function
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Aggregation {
@@ -153,18 +134,14 @@ pub enum Aggregation {
     Last,
 }
 
-/// Compression configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompressionConfig {
-    /// Enable delta encoding for timestamps
     #[serde(default = "default_true")]
     pub delta_encoding: bool,
 
-    /// Enable run-length encoding for repeated values
     #[serde(default = "default_true")]
     pub run_length_encoding: bool,
 
-    /// Enable Gorilla compression for floats
     #[serde(default = "default_true")]
     pub gorilla_compression: bool,
 }
@@ -183,16 +160,9 @@ impl Default for CompressionConfig {
     }
 }
 
-// ============================================================================
-// Data Types
-// ============================================================================
-
-/// A single data point
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DataPoint {
-    /// Timestamp in milliseconds since epoch
     pub timestamp: i64,
-    /// Value
     pub value: f64,
 }
 
@@ -209,17 +179,13 @@ impl DataPoint {
     }
 }
 
-/// A time series with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimeSeries {
-    /// Metric name
     pub metric: String,
 
-    /// Tags for filtering
     #[serde(default)]
     pub tags: HashMap<String, String>,
 
-    /// Data points
     pub points: Vec<DataPoint>,
 }
 
@@ -242,85 +208,57 @@ impl TimeSeries {
     }
 }
 
-/// Query for time-series data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimeseriesQuery {
-    /// Metric name pattern (supports wildcards)
     pub metric: String,
 
-    /// Start time (inclusive)
     pub start: DateTime<Utc>,
 
-    /// End time (exclusive)
     pub end: DateTime<Utc>,
 
-    /// Tag filters
     #[serde(default)]
     pub tags: HashMap<String, String>,
 
-    /// Aggregation function
     #[serde(default)]
     pub aggregation: Option<Aggregation>,
 
-    /// Group by resolution
     #[serde(default)]
     pub resolution: Option<Resolution>,
 
-    /// Maximum number of points
     #[serde(default)]
     pub limit: Option<usize>,
 }
 
-/// Query result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimeseriesResult {
-    /// Matching series
     pub series: Vec<TimeSeries>,
 
-    /// Query execution time in milliseconds
     pub execution_time_ms: u64,
 
-    /// Number of points scanned
     pub points_scanned: u64,
 
-    /// Number of points returned
     pub points_returned: u64,
 }
 
-// ============================================================================
-// Storage Engine
-// ============================================================================
-
-/// Time-series storage engine
 pub struct TimeseriesEngine {
     config: TimeseriesConfig,
-    /// Storage: metric -> timestamp_bucket -> compressed data
     data: Arc<RwLock<BTreeMap<String, BTreeMap<i64, CompressedBlock>>>>,
     /// Index: metric+tags -> series ID
     index: Arc<RwLock<HashMap<String, Vec<String>>>>,
 }
 
-/// Compressed data block
 #[derive(Debug, Clone)]
 pub struct CompressedBlock {
-    /// Start timestamp
     pub start_ts: i64,
-    /// End timestamp
     pub end_ts: i64,
-    /// Number of points
     pub count: usize,
-    /// Compressed data
     pub data: Vec<u8>,
-    /// Min value in block
     pub min: f64,
-    /// Max value in block
     pub max: f64,
-    /// Sum of values in block
     pub sum: f64,
 }
 
 impl TimeseriesEngine {
-    /// Create a new time-series engine
     pub fn new(config: TimeseriesConfig) -> Self {
         Self {
             config,
@@ -329,7 +267,6 @@ impl TimeseriesEngine {
         }
     }
 
-    /// Write data points
     pub fn write(&self, series: &TimeSeries) -> Result<()> {
         if series.points.is_empty() {
             return Ok(());
@@ -337,7 +274,6 @@ impl TimeseriesEngine {
 
         let series_key = self.series_key(&series.metric, &series.tags);
 
-        // Update index
         {
             let mut index = self.index.write().unwrap();
             index
@@ -346,20 +282,17 @@ impl TimeseriesEngine {
                 .push(series_key.clone());
         }
 
-        // Compress and store points
         let compressed = self.compress_points(&series.points)?;
 
         let mut data = self.data.write().unwrap();
         let metric_data = data.entry(series_key).or_default();
 
-        // Store in time bucket (hourly buckets)
         let bucket_ts = Resolution::Hour.align(series.points[0].timestamp);
         metric_data.insert(bucket_ts, compressed);
 
         Ok(())
     }
 
-    /// Query data points
     pub fn query(&self, query: &TimeseriesQuery) -> Result<TimeseriesResult> {
         let start = std::time::Instant::now();
         let start_ts = query.start.timestamp_millis();
@@ -370,24 +303,20 @@ impl TimeseriesEngine {
         let mut points_scanned = 0u64;
         let mut points_returned = 0u64;
 
-        // Find matching series
         for (series_key, buckets) in data.iter() {
             if !self.matches_metric(series_key, &query.metric) {
                 continue;
             }
 
-            // Check tags
             if !self.matches_tags(series_key, &query.tags) {
                 continue;
             }
 
             let mut points = Vec::new();
 
-            // Scan relevant buckets
             for (_bucket_ts, block) in buckets.range(start_ts..=end_ts) {
                 points_scanned += block.count as u64;
 
-                // Decompress and filter points
                 let block_points = self.decompress_block(block)?;
                 for point in block_points {
                     if point.timestamp >= start_ts && point.timestamp < end_ts {
@@ -396,12 +325,10 @@ impl TimeseriesEngine {
                 }
             }
 
-            // Apply aggregation if requested
             if let (Some(agg), Some(res)) = (&query.aggregation, &query.resolution) {
                 points = self.aggregate_points(&points, *agg, *res);
             }
 
-            // Apply limit
             if let Some(limit) = query.limit {
                 points.truncate(limit);
             }
@@ -428,7 +355,6 @@ impl TimeseriesEngine {
         })
     }
 
-    /// Compress data points
     fn compress_points(&self, points: &[DataPoint]) -> Result<CompressedBlock> {
         if points.is_empty() {
             return Err(Error::Internal("No points to compress".to_string()));
@@ -438,7 +364,6 @@ impl TimeseriesEngine {
         let end_ts = points.last().unwrap().timestamp;
         let count = points.len();
 
-        // Calculate stats
         let mut min = f64::MAX;
         let mut max = f64::MIN;
         let mut sum = 0.0;
@@ -449,22 +374,18 @@ impl TimeseriesEngine {
             sum += p.value;
         }
 
-        // Compress using delta encoding + simple compression
         let mut data = Vec::new();
 
         if self.config.compression.delta_encoding {
-            // Delta encode timestamps
             let mut prev_ts = start_ts;
             for point in points {
                 let delta = point.timestamp - prev_ts;
                 prev_ts = point.timestamp;
 
-                // Varint encoding for delta
                 data.extend_from_slice(&(delta as i32).to_le_bytes());
                 data.extend_from_slice(&point.value.to_le_bytes());
             }
         } else {
-            // Raw encoding
             for point in points {
                 data.extend_from_slice(&point.timestamp.to_le_bytes());
                 data.extend_from_slice(&point.value.to_le_bytes());
@@ -482,7 +403,6 @@ impl TimeseriesEngine {
         })
     }
 
-    /// Decompress a data block
     fn decompress_block(&self, block: &CompressedBlock) -> Result<Vec<DataPoint>> {
         let mut points = Vec::with_capacity(block.count);
 
@@ -555,7 +475,6 @@ impl TimeseriesEngine {
         Ok(points)
     }
 
-    /// Aggregate points by resolution
     fn aggregate_points(
         &self,
         points: &[DataPoint],
@@ -566,7 +485,6 @@ impl TimeseriesEngine {
             return Vec::new();
         }
 
-        // Group by resolution bucket
         let mut buckets: BTreeMap<i64, Vec<f64>> = BTreeMap::new();
 
         for point in points {
@@ -574,7 +492,6 @@ impl TimeseriesEngine {
             buckets.entry(bucket).or_default().push(point.value);
         }
 
-        // Aggregate each bucket
         buckets
             .into_iter()
             .map(|(ts, values)| {
@@ -595,7 +512,6 @@ impl TimeseriesEngine {
             .collect()
     }
 
-    /// Generate series key from metric and tags
     fn series_key(&self, metric: &str, tags: &HashMap<String, String>) -> String {
         if tags.is_empty() {
             return metric.to_string();
@@ -612,12 +528,10 @@ impl TimeseriesEngine {
         format!("{}|{}", metric, tags_str.join(","))
     }
 
-    /// Check if series key matches metric pattern
     fn matches_metric(&self, series_key: &str, pattern: &str) -> bool {
         let metric = series_key.split('|').next().unwrap_or(series_key);
 
         if pattern.contains('*') {
-            // Simple wildcard matching
             let parts: Vec<&str> = pattern.split('*').collect();
             if parts.len() == 2 {
                 metric.starts_with(parts[0]) && metric.ends_with(parts[1])
@@ -629,7 +543,6 @@ impl TimeseriesEngine {
         }
     }
 
-    /// Check if series key matches tag filters
     fn matches_tags(&self, series_key: &str, filters: &HashMap<String, String>) -> bool {
         if filters.is_empty() {
             return true;
@@ -644,7 +557,6 @@ impl TimeseriesEngine {
         true
     }
 
-    /// Extract tags from series key
     fn extract_tags(&self, series_key: &str) -> HashMap<String, String> {
         let mut tags = HashMap::new();
 
@@ -659,7 +571,6 @@ impl TimeseriesEngine {
         tags
     }
 
-    /// Run retention cleanup
     pub fn run_retention(&self) -> Result<u64> {
         let cutoff = Utc::now() - Duration::days(self.config.retention_days as i64);
         let cutoff_ts = cutoff.timestamp_millis();
@@ -680,7 +591,6 @@ impl TimeseriesEngine {
         Ok(deleted)
     }
 
-    /// Run downsampling
     pub fn run_downsampling(&self) -> Result<u64> {
         let now = Utc::now();
         let mut downsampled = 0u64;
@@ -692,14 +602,8 @@ impl TimeseriesEngine {
             let data = self.data.read().unwrap();
 
             for (_series_key, buckets) in data.iter() {
-                // Find blocks that need downsampling
                 for (_bucket_ts, block) in buckets.range(..cutoff_ts) {
                     if block.count > 1 {
-                        // This block needs downsampling
-                        // In a real implementation, we would:
-                        // 1. Decompress the block
-                        // 2. Aggregate to new resolution
-                        // 3. Replace with downsampled block
                         downsampled += block.count as u64;
                     }
                 }
@@ -709,7 +613,6 @@ impl TimeseriesEngine {
         Ok(downsampled)
     }
 
-    /// Get storage statistics
     pub fn stats(&self) -> TimeseriesStats {
         let data = self.data.read().unwrap();
 
@@ -735,7 +638,6 @@ impl TimeseriesEngine {
     }
 }
 
-/// Time-series storage statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimeseriesStats {
     pub total_series: usize,
@@ -745,23 +647,17 @@ pub struct TimeseriesStats {
     pub downsample_rules: usize,
 }
 
-// ============================================================================
-// Global Instance
-// ============================================================================
-
 use once_cell::sync::Lazy;
 
 pub static TIMESERIES_ENGINE: Lazy<RwLock<Option<TimeseriesEngine>>> =
     Lazy::new(|| RwLock::new(None));
 
-/// Initialize the time-series engine
 pub fn init_timeseries(config: TimeseriesConfig) {
     let engine = TimeseriesEngine::new(config);
     let mut guard = TIMESERIES_ENGINE.write().unwrap();
     *guard = Some(engine);
 }
 
-/// Get the time-series engine
 pub fn get_timeseries_engine(
 ) -> Option<std::sync::RwLockReadGuard<'static, Option<TimeseriesEngine>>> {
     let guard = TIMESERIES_ENGINE.read().ok()?;
@@ -772,10 +668,6 @@ pub fn get_timeseries_engine(
     }
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -785,7 +677,6 @@ mod tests {
         let ts = 1706788234567i64; // Some timestamp
 
         assert_eq!(Resolution::Minute.align(ts), 1706788200000);
-        // Hour alignment rounds down to the start of the hour
         assert_eq!(Resolution::Hour.align(ts), 1706785200000);
     }
 
@@ -807,7 +698,6 @@ mod tests {
     fn test_write_and_query() {
         let engine = TimeseriesEngine::new(TimeseriesConfig::default());
 
-        // Write some data
         let mut series = TimeSeries::new("cpu.usage");
         series = series.with_tag("host", "server1");
 
@@ -818,7 +708,6 @@ mod tests {
 
         engine.write(&series).unwrap();
 
-        // Query it back
         let result = engine
             .query(&TimeseriesQuery {
                 metric: "cpu.usage".to_string(),

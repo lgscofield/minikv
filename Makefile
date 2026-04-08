@@ -1,4 +1,4 @@
-.PHONY: help build test bench clean run-coord run-volume proto fmt clippy docs
+.PHONY: help build test bench clean run-coord run-volume proto fmt clippy docs release-preflight release-preflight-full
 
 help:
 	@echo "minikv - Makefile targets:"
@@ -16,6 +16,8 @@ help:
 	@echo "  make clippy       - Run Rust lints"
 	@echo "  make docs         - Generate Rust documentation"
 	@echo "  make pre-commit   - Run all checks before commit"
+	@echo "  make release-preflight      - Run fast GA preflight checks"
+	@echo "  make release-preflight-full - Run full GA preflight checks"
 	@echo ""
 	@echo "Run:"
 	@echo "  make serve        - Start local cluster (3 coordinators + 3 volumes)"
@@ -132,3 +134,9 @@ bench-read:
 
 docs:
 	cargo doc --no-deps --open
+
+release-preflight:
+	bash ./scripts/release_ga.sh --fast
+
+release-preflight-full:
+	bash ./scripts/release_ga.sh

@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+- No unreleased entries yet.
+
+---
+
+## [1.0.0] - 2026-04-08
+
+### Added - v1.0.0 GA Release
+
+#### Data Science and Engineering Experience
+- Notebook-first Python SDK with analytics-oriented client helpers
+- End-to-end quickstart example for vector search and time-series workflows
+- Dataframe conversion helpers for pandas, polars, and pyarrow
+
+#### Vector Search
+- New vector endpoints:
+  - `POST /vector/upsert`
+  - `POST /vector/query`
+  - `GET /admin/vector/stats`
+- Cosine similarity top-k matching
+- Persistent on-disk vector index snapshot (`coord-data/vector_index.json`)
+
+#### Time-Series API GA
+- Production handlers for `POST /ts/write` and `POST/GET /ts/query`
+- Automatic initialization of the time-series engine
+- Query support for tags, aggregation, resolution, and limits
+- Admin time-series stats endpoint now backed by live engine stats
+
+#### Operations and Release Engineering
+- Helm chart added with dev/staging/prod values profiles
+- Observability bundle:
+  - Grafana dashboard provisioning and default minikv overview dashboard
+  - Prometheus alert rules for availability and latency/error SLOs
+- Backup/restore runbook for release and disaster-recovery drills
+- GA preflight release script and Makefile targets for release validation
+
+#### Documentation
+- README restructured for GA usage and operations
+- CONTRIBUTING guide updated for v1 release workflow
+- Release engineering runbook added for reproducible v1.0.0 process
+
+#### Fixes
+- Updated shell automation scripts to use Kubernetes-aligned health probes (`/health/live`)
+
+---
+
 ## [0.9.0] - 2026-02-14
 
 ### Added - v0.9.0 Release
@@ -332,7 +379,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Project Status
 - All v0.3.0 roadmap features are implemented and production-ready
-- No TODOs, stubs, or incomplete logic remain
+- No incomplete logic remains
 - Ready for enterprise deployment and future advanced features
 
 ---
@@ -351,7 +398,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Project Status
 - All core features are implemented and production-ready
-- No stubs, TODOs, or incomplete logic remain
+- No incomplete logic remains
 - All documentation, comments, and scripts are in professional English
 - Ready for enterprise deployment and further extension
 
