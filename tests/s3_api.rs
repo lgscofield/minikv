@@ -179,7 +179,7 @@ async fn test_s3_put_get() {
     let (mut volume, vol_data, vol_wal) = start_volume(vol_http, vol_grpc, coord_http, &test_id);
 
     let s3_url = format!("http://127.0.0.1:{}/s3/testbucket/hello.txt", coord_http);
-    wait_for_endpoint(&mut [&mut coord, &mut volume], &s3_url).await;
+    wait_for_endpoint(&mut [&mut coord], &s3_url).await;
 
     let client = Client::new();
     let data = b"Hello, S3!";
